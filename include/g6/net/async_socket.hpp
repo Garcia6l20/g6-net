@@ -124,7 +124,7 @@ namespace g6::io {
     net::async_socket tag_invoke(
         tag_t<net::open_socket>,
         auto scheduler,
-        int domain, int type, int proto) {
+        int domain, int type, int proto = 0) {
         int result = socket(domain, type, proto);
         if (result < 0) {
             int errorCode = errno;

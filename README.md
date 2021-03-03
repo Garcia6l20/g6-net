@@ -10,7 +10,7 @@ git clone --recurse-submodules https://github.com/Garcia6l20/g6-net.git
 
 ```bash
 mkdir build && cd build
-conan install --build=missing ..
+conan install --build=outdated ..
 cmake ..
 cmake --build .
 ```

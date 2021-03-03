@@ -26,3 +26,4 @@ target_link_libraries(${PROJECT_NAME} PUBLIC unifex)
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_BINARY_DIR})
 
 add_subdirectory(tests)
+add_subdirectory(examples)

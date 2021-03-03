@@ -3,9 +3,10 @@ if(NOT BUILD_TESTING)
 endif()
 
 find_package(Catch2 REQUIRED)
+find_package(fmt REQUIRED)
 
 add_library(${PROJECT_NAME}-tests-main main.cpp)
-target_link_libraries(${PROJECT_NAME}-tests-main PUBLIC Catch2::Catch2)
+target_link_libraries(${PROJECT_NAME}-tests-main PUBLIC Catch2::Catch2 fmt::fmt)
 
 ##
 ## add_test overload
@@ -31,3 +32,4 @@ function(add_test _base_test_source)
 endfunction()
 
 add_test(udp-test.cpp)
+add_test(tcp-test.cpp)

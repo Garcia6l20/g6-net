@@ -30,6 +30,8 @@ namespace g6::net {
     } __name{}; } using _io_cpo::__name;
 
     G6_CPO_DEF(open_socket)
+    G6_CPO_DEF(async_accept)
+    G6_CPO_DEF(async_connect)
     G6_CPO_DEF(async_send)
     G6_CPO_DEF(async_send_to)
     G6_CPO_DEF(async_recv)

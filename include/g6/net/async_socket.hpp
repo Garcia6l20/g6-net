@@ -1,5 +1,6 @@
 #include <g6/io/context.hpp>
 #include <g6/net/net_concepts.hpp>
+#include <span>
 
 namespace g6::net {
     class async_socket
@@ -17,18 +18,147 @@ namespace g6::net {
             }
         }
 
+        void listen(size_t count = 100) {
+            if (::listen(fd_.get(), count) < 0) {
+                throw std::system_error(-errno, std::system_category());
+            }
+        }
+
+        struct accept_sender : io::context::base_sender {
+            accept_sender(io::context &context, int fd) noexcept
+                : io::context::base_sender{context, fd} {
+                io_data_ = std::as_bytes(std::span{&sockaddr_storage_, 1});
+            }
+
+            template<typename Receiver>
+            struct operation : io::context::base_operation<IORING_OP_ACCEPT, Receiver, operation<Receiver>> {
+                using base = io::context::base_operation<IORING_OP_ACCEPT, Receiver, operation<Receiver>>;
+                using base::base;
+                auto get_io_data() noexcept {
+                    socklen_ = this->io_data_.size();
+                    return std::tuple{this->io_data_.data(), 0, reinterpret_cast<uint64_t>(&socklen_)};
+                }
+                auto get_result() noexcept {
+                    int fd = this->result_;
+                    return std::tuple{async_socket(this->context_, fd),
+                                      ip_endpoint::from_sockaddr(*reinterpret_cast<const sockaddr *>(this->io_data_.data()))};
+                }
+                socklen_t socklen_{};
+            };
+
+            // Produces void result.
+            template<
+                template<typename...> class Variant,
+                template<typename...> class Tuple>
+            using value_types = Variant<Tuple<async_socket, ip_endpoint>>;
+
+            template<template<typename...> class Variant>
+            using error_types = Variant<std::error_code, std::exception_ptr>;
+
+            template<typename Receiver>
+            auto connect(Receiver &&r) && {
+                return operation<Receiver>{*this, (Receiver &&) r};
+            }
+
+            sockaddr_storage sockaddr_storage_{};
+            std::span<std::byte const> io_data_{};
+            static constexpr int64_t offset_{0};
+        };
+
+        friend auto tag_invoke(
+            tag_t<async_accept>,
+            async_socket &socket) noexcept {
+            return accept_sender{socket.context_, socket.fd_.get()};
+        }
+
+        struct connect_sender : io::context::base_sender {
+            connect_sender(io::context &context, int fd, ip_endpoint &&endpoint) noexcept
+                : io::context::base_sender{context, fd} {
+                auto len = endpoint.to_sockaddr(sockaddr_storage_);
+                io_data_ = std::as_bytes(std::span{reinterpret_cast<std::byte *>(&sockaddr_storage_), size_t(len)});
+            }
+
+            template<typename Receiver>
+            struct operation : io::context::base_operation<IORING_OP_CONNECT, Receiver, operation<Receiver>> {
+                using base = io::context::base_operation<IORING_OP_CONNECT, Receiver, operation<Receiver>>;
+                using base::base;
+                auto get_io_data() noexcept {
+                    return std::tuple{this->io_data_.data(), 0, this->io_data_.size()};
+                }
+            };
+
+            // Produces void result.
+            template<
+                template<typename...> class Variant,
+                template<typename...> class Tuple>
+            using value_types = Variant<Tuple<int>>;
+
+            template<template<typename...> class Variant>
+            using error_types = Variant<std::error_code, std::exception_ptr>;
+
+            template<typename Receiver>
+            auto connect(Receiver &&r) && {
+                return operation<Receiver>{*this, (Receiver &&) r};
+            }
+
+            sockaddr_storage sockaddr_storage_{};
+            std::span<std::byte const> io_data_{};
+            static constexpr int64_t offset_{0};
+        };
+
+        friend auto tag_invoke(
+            tag_t<async_connect>,
+            async_socket &socket,
+            ip_endpoint &&endpoint) noexcept {
+            return connect_sender{socket.context_, socket.fd_.get(), std::forward<ip_endpoint>(endpoint)};
+        }
+
+        struct send_sender : io::context::base_sender {
+            send_sender(io::context &context, int fd, std::span<std::byte const> buffer) noexcept
+                : io::context::base_sender{context, fd}, io_data_{buffer} {
+            }
+
+            template<typename Receiver>
+            using operation = io::context::base_operation<IORING_OP_SEND, Receiver>;
+
+            template<typename Receiver>
+            auto connect(Receiver &&r) && {
+                return operation<Receiver>{*this, (Receiver &&) r};
+            }
+
+            std::span<std::byte const> io_data_{};
+            static constexpr int64_t offset_{0};
+        };
+
         friend auto tag_invoke(
             tag_t<async_send>,
             async_socket &socket,
             span<const std::byte> buffer) noexcept {
-            return io_uring_context::write_sender{socket.context_, socket.fd_.get(), 0, buffer};
+            return send_sender{socket.context_, socket.fd_.get(), buffer};
         }
+
+        struct recv_sender : io::context::base_sender {
+            recv_sender(io::context &context, int fd, std::span<std::byte> buffer) noexcept
+                : io::context::base_sender{context, fd}, io_data_{buffer} {
+            }
+
+            template<typename Receiver>
+            using operation = io::context::base_operation<IORING_OP_RECV, Receiver>;
+
+            template<typename Receiver>
+            auto connect(Receiver &&r) && {
+                return operation<Receiver>{*this, (Receiver &&) r};
+            }
+
+            std::span<std::byte> io_data_{};
+            static constexpr int64_t offset_{0};
+        };
 
         friend auto tag_invoke(
             tag_t<async_recv>,
             async_socket &socket,
             span<std::byte> buffer) noexcept {
-            return io_uring_context::read_sender{socket.context_, socket.fd_.get(), 0, buffer};
+            return recv_sender{socket.context_, socket.fd_.get(), buffer};
         }
 
         template<uint8_t op_code>
@@ -57,7 +187,7 @@ namespace g6::net {
             sockaddr_storage sockaddr_storage_{};
             iovec iovec_;
             msghdr msghdr_{&sockaddr_storage_, sizeof(sockaddr_storage_), &iovec_, 1};
-            const void *io_data_{&msghdr_};
+            const std::span<std::byte const> io_data_{std::as_bytes(std::span{reinterpret_cast<std::byte *>(&msghdr_), 1})};
         };
 
         friend auto tag_invoke(

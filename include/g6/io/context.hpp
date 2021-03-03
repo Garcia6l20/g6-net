@@ -1,10 +1,12 @@
 #pragma once
 
+#include <span>
+
 #if __has_include(<liburing.h>)
-#include <unifex/linux/io_uring_context.hpp>
 #include <liburing.h>
-#define G6_OS_LINUX  true
-#define G6_IO_USE_IO_URING  true
+#include <unifex/linux/io_uring_context.hpp>
+#define G6_OS_LINUX true
+#define G6_IO_USE_IO_URING true
 #else
 #error "Cannot find suitable IO context"
 #endif
@@ -14,7 +16,7 @@ namespace g6 {
 #if G6_OS_LINUX
     using namespace unifex::linuxos;
 #endif
-}
+}// namespace g6
 
 namespace g6::io {
     class context : public io_uring_context
@@ -66,26 +68,40 @@ namespace g6::io {
         }
 
     private:
-        static auto &get_impl(operation_base *op) {
+        static auto &get_impl(operation_base *op) noexcept {
             if constexpr (not std::is_void_v<CRTP>) {
                 return *static_cast<CRTP *>(op);
             } else {
                 return *static_cast<base_operation *>(op);
             }
         }
+        auto &get_impl() noexcept {
+            return get_impl(this);
+        }
 
         static void on_schedule_complete(operation_base *op) noexcept {
             static_cast<base_operation *>(op)->start_io();
+        }
+
+        auto get_impl_io_data() noexcept {
+            if constexpr (requires {
+                {get_impl().get_io_data()};
+            }) {
+                return get_impl().get_io_data();
+            } else {
+                return std::tuple{io_data_.data(), io_data_.size(), offset_};
+            }
         }
 
         void start_io() noexcept {
             assert(context_.is_running_on_io_thread());
 
             auto populateSqe = [this](io_uring_sqe &sqe) noexcept {
-              io_uring_prep_rw(op_code, &sqe, fd_, io_data_, 1, offset_);
-              sqe.user_data = reinterpret_cast<std::uintptr_t>(
-                  static_cast<base_operation *>(this));
-              this->execute_ = &base_operation::on_operation_complete;
+                const auto [data, len, off] = get_impl_io_data();
+                io_uring_prep_rw(op_code, &sqe, fd_, data, len, off);
+                sqe.user_data = reinterpret_cast<std::uintptr_t>(
+                    static_cast<base_operation *>(this));
+                this->execute_ = &base_operation::on_operation_complete;
             };
 
             if (!context_.try_submit_io(populateSqe)) {
@@ -96,8 +112,8 @@ namespace g6::io {
 
         auto get_impl_result() noexcept {
             if constexpr (requires {
-                {get_impl(this).get_result()};
-            }) {
+                              {get_impl(this).get_result()};
+                          }) {
                 return get_impl(this).get_result();
             } else {
                 return size_t(result_);
@@ -126,10 +142,11 @@ namespace g6::io {
             }
         }
 
+    protected:
         context &context_;
         int fd_;
         int64_t offset_;
-        const void *io_data_;
+        std::span<std::byte const> io_data_;
         Receiver receiver_;
     };
 

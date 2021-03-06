@@ -20,6 +20,10 @@ set(UNIFEX_BUILD_EXAMPLES ${G6_UNIFEX_DEVEL})
 add_subdirectory(external/libunifex)
 set(BUILD_TESTING ${_BUILD_TESTING})
 
+find_package(mbedtls)
+find_package(fmt REQUIRED)
+find_package(spdlog REQUIRED)
+
 ##
 ##
 ##
@@ -38,7 +42,15 @@ add_library(${PROJECT_NAME}
   )
 add_library(g6::net ALIAS ${PROJECT_NAME})
 target_include_directories(${PROJECT_NAME} PUBLIC include)
-target_link_libraries(${PROJECT_NAME} PUBLIC unifex)
+target_link_libraries(${PROJECT_NAME} PUBLIC unifex fmt::fmt spdlog::spdlog)
+
+if (mbedtls_FOUND)
+  target_link_libraries(${PROJECT_NAME} PUBLIC
+    mbed::tls
+    mbed::crypto
+    mbed::x509
+    )
+endif()
 
 option(G6_NO_IO_URING "Disable IO uring as default context" OFF)
 if (G6_NO_IO_URING)

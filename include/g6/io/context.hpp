@@ -1,4 +1,5 @@
-#pragma once
+#ifndef G6_IO_CONTEXT_HPP_
+#define G6_IO_CONTEXT_HPP_
 
 #include <g6/io/config.hpp>
 
@@ -17,6 +18,8 @@
 #else
 #error "Cannot find suitable IO context"
 #endif
+
+#include <unifex/static_thread_pool.hpp>
 
 namespace g6 {
     using namespace unifex;
@@ -74,6 +77,9 @@ namespace g6::io {
         }
 
     public:
+        using completion_base = completion_base;
+        friend completion_base;
+
         template<detail::io_operation_id op_code, typename Receiver, typename CRTP = void>
         class base_operation;
 
@@ -272,9 +278,11 @@ namespace g6::io {
         base_sender(base_sender &&) = default;
         base_sender(base_sender const&) = delete;
 
-    private:
+    protected:
         context &context_;
         int fd_;
     };
 
 }// namespace g6::io
+
+#endif // G6_IO_CONTEXT_HPP_

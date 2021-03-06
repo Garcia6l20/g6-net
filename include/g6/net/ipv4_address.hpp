@@ -2,7 +2,8 @@
 // Copyright (c) Lewis Baker
 // Licenced under MIT license. See LICENSE.txt for details.
 ///////////////////////////////////////////////////////////////////////////////
-#pragma once
+#ifndef G6_NET_IPV4_ADDRESS_HPP_
+#define G6_NET_IPV4_ADDRESS_HPP_
 
 #include <cstdint>
 #include <optional>
@@ -129,3 +130,5 @@ namespace g6::net
 
 	};
 }
+
+#endif // G6_NET_IPV4_ADDRESS_HPP_

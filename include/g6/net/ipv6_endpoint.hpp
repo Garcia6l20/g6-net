@@ -2,7 +2,8 @@
 // Copyright (c) Lewis Baker
 // Licenced under MIT license. See LICENSE.txt for details.
 ///////////////////////////////////////////////////////////////////////////////
-#pragma once
+#ifndef G6_NET_IPV6_ENDPOINT_HPP_
+#define G6_NET_IPV6_ENDPOINT_HPP_
 
 #include <g6/net/ipv6_address.hpp>
 
@@ -60,3 +61,5 @@ namespace g6::net {
         return !(a < b);
     }
 }// namespace g6::net
+
+#endif // G6_NET_IPV6_ENDPOINT_HPP_

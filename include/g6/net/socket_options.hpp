@@ -1,15 +1,12 @@
-#pragma once
+#ifndef G6_NET_CPO_HPP_
+#define G6_NET_CPO_HPP_
 
 #include <cstring>
 
 #include <utility>
 
-#if CXXCORO_OS_WINNT
-#include <winsock2.h>
-#else
 #include <netdb.h>
 #include <sys/socket.h>
-#endif
 
 #include <cxxcoro/net/ip_address.hpp>
 #include <stdexcept>
@@ -77,3 +74,5 @@ namespace g6::net::socket_options
 	}  // namespace ip
 
 }  // namespace g6::net::socket_options
+
+#endif // G6_NET_CPO_HPP_

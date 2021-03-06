@@ -12,7 +12,7 @@
 using namespace g6;
 using namespace std::chrono_literals;
 
-TEST_CASE("tcp tx/rx test", "[g6::net::udp]") {
+TEST_CASE("tcp tx/rx test", "[g6::net::tcp]") {
     io::context ctx{};
     inplace_stop_source stop_source{};
 

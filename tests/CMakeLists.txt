@@ -31,5 +31,6 @@ function(add_test _base_test_source)
 
 endfunction()
 
-add_test(udp-test.cpp)
-add_test(tcp-test.cpp)
+set(CMAKE_INCLUDE_CURRENT_DIR ON)
+
+add_subdirectory(net)

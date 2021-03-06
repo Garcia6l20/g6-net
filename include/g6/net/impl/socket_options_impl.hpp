@@ -1,4 +1,5 @@
-#pragma once
+#ifndef G6_NET_IMPL_SOCKET_OPTION_HPP_
+#define G6_NET_IMPL_SOCKET_OPTION_HPP_
 
 #include <cxxcoro/net/socket.hpp>
 #include <cxxcoro/net/socket_options.hpp>
@@ -21,3 +22,4 @@ namespace g6::net
     }
 }  // namespace g6::net::socket_options
 
+#endif // G6_NET_IMPL_SOCKET_OPTION_HPP_

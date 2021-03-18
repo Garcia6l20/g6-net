@@ -1,2 +1,2 @@
-add_test(tcp-test.cpp)
-add_test(udp-test.cpp)
+g6_add_unit_test(tcp-test.cpp)
+g6_add_unit_test(udp-test.cpp)

@@ -4,7 +4,7 @@
 
 #include <g6/io/context.hpp>
 #include <g6/net/ip_endpoint.hpp>
-#include <g6/net/async_socket.hpp>
+#include <g6/net/tcp.hpp>
 
 #include <fmt/format.h>
 
@@ -20,9 +20,7 @@ int main() {
             scope_guard _ = [&]() noexcept {
                 stop_source.request_stop();
             };
-            auto sock = net::open_socket(ctx.get_scheduler(), AF_INET, SOCK_STREAM);
-            sock.bind(*net::ip_endpoint::from_string("127.0.0.1:4242"));
-            sock.listen();
+            auto sock = net::open_socket(ctx, net::tcp_server, *net::ip_endpoint::from_string("127.0.0.1:4242"));
             auto [client, client_address] = co_await net::async_accept(sock);
             char buffer[1024]{};
             auto byte_count = co_await net::async_recv(client, as_writable_bytes(span{buffer}));
@@ -30,8 +28,7 @@ int main() {
             co_return;
         }(),
         [&]() -> task<void> {
-          auto sock = net::open_socket(ctx.get_scheduler(), AF_INET, SOCK_STREAM);
-          co_await net::async_connect(sock, *net::ip_endpoint::from_string("127.0.0.1:4242"));
+          auto sock = co_await net::open_socket(ctx, net::tcp_client, *net::ip_endpoint::from_string("127.0.0.1:4242"));
           const char buffer[] = {"hello world !!!"};
           co_await net::async_send(sock, as_bytes(span{buffer}));
         }(),

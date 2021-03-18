@@ -13,6 +13,8 @@ namespace g6::net {
     G6_CPO_DEF(async_recv, _net_cpo)
     G6_CPO_DEF(async_recv_from, _net_cpo)
 
+    G6_CPO_DEF(make_server, _net_cpo)
+
 }// namespace g6::net
 
 #endif // G6_NET_NET_CPO_HPP_

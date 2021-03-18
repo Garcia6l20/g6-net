@@ -19,7 +19,7 @@ int main() {
             scope_guard _ = [&]() noexcept {
                 stop_source.request_stop();
             };
-            auto sock = net::open_socket(ctx.get_scheduler(), AF_INET, SOCK_DGRAM);
+            auto sock = net::open_socket(ctx, AF_INET, SOCK_DGRAM);
             std::array<std::byte, 64> buffer{};
             sock.bind(*net::ip_endpoint::from_string("127.0.0.1:4242"));
             auto [bytes_received, from] = co_await g6::net::async_recv_from(sock, as_writable_bytes(span{buffer}));
@@ -28,7 +28,7 @@ int main() {
             co_return;
         }(),
         [&]() -> task<void> {
-            auto sock = net::open_socket(ctx.get_scheduler(), AF_INET, SOCK_DGRAM);
+            auto sock = net::open_socket(ctx, AF_INET, SOCK_DGRAM);
             const char buffer[] = {"hello world !!!"};
             auto bytes_sent = co_await g6::net::async_send_to(sock, as_bytes(span{buffer}), *g6::net::ip_endpoint::from_string("127.0.0.1:4242"));
             co_return;

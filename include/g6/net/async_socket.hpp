@@ -10,6 +10,11 @@
 namespace g6::net {
 
     namespace detail {
+        namespace tags {
+            struct tcp_server {};
+            struct tcp_client {};
+        }// namespace _tags
+
         struct accept_sender;
         struct connect_sender;
         struct recv_sender;
@@ -18,11 +23,18 @@ namespace g6::net {
         struct send_to_sender;
     }
 
+    inline const detail::tags::tcp_server tcp_server;
+    inline const detail::tags::tcp_client tcp_client;
+
     class async_socket
     {
     public:
         explicit async_socket(io::context &context, int fd) noexcept
             : context_(context), fd_(fd) {}
+
+        async_socket(async_socket&&) = default;
+        async_socket(async_socket const&) = delete;
+        ~async_socket() = default;
 
         void bind(g6::net::ip_endpoint &&endpoint) {
             sockaddr_storage storage{};
@@ -69,6 +81,9 @@ namespace g6::net {
             async_socket &socket,
             span<std::byte> buffer) noexcept;
 
+        template<class IOContext2>
+        friend auto tag_invoke(unifex::tag_t<open_socket>, IOContext2 &ctx, detail::tags::tcp_client const &,
+                        ip_endpoint &&endpoint);
     protected:
         safe_file_descriptor fd_;
         io::context &context_;
@@ -79,7 +94,7 @@ namespace g6::net {
 namespace g6::io {
     net::async_socket tag_invoke(
         tag_t<net::open_socket>,
-        auto scheduler,
+        auto&ctx,
         int domain, int type, int proto = 0);
 }// namespace g6::io
 

@@ -16,8 +16,13 @@
 
 #include <cstring>
 
+#if defined(_MSC_VER)
+#include <WinSock2.h>
+#include <ws2ipdef.h>
+#else
 #include <sys/socket.h>
 #include <netinet/in.h>
+#endif
 
 
 namespace g6::net {

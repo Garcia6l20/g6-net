@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.17)
+cmake_minimum_required(VERSION 3.16)
 project(g6-net
   LANGUAGES CXX
   VERSION 0.0.1
@@ -39,6 +39,11 @@ add_library(${PROJECT_NAME}
 add_library(g6::net ALIAS ${PROJECT_NAME})
 target_include_directories(${PROJECT_NAME} PUBLIC include)
 target_link_libraries(${PROJECT_NAME} PUBLIC unifex)
+
+option(G6_NO_IO_URING "Disable IO uring as default context" OFF)
+if (G6_NO_IO_URING)
+  target_compile_definitions(${PROJECT_NAME} PUBLIC G6_NO_IO_URING=true)
+endif()
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_BINARY_DIR})
 

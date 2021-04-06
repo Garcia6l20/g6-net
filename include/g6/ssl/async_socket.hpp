@@ -6,18 +6,36 @@
 #include <g6/ssl/certificate.hpp>
 #include <g6/ssl/context.hpp>
 #include <g6/ssl/key.hpp>
+#include <g6/ssl/ssl_cpo.hpp>
 
 #include <g6/net/async_socket.hpp>
 #include <g6/net/ip_endpoint.hpp>
 
-#include <unifex/task.hpp>
-
+#include <unifex/any_sender_of.hpp>
+#include <unifex/just.hpp>
+#include <unifex/let.hpp>
+#include <unifex/repeat_effect_until.hpp>
+#include <unifex/sequence.hpp>
+#include <unifex/transform.hpp>
+#include <unifex/transform_done.hpp>
+#include <unifex/typed_via.hpp>
 
 #include <utility>
 
 #include <spdlog/spdlog.h>
 
+//#define G6_SSL_DEBUG
+
 namespace g6::ssl {
+
+    namespace detail::tags {
+        struct tcp_server {};
+        struct tcp_client {};
+    }// namespace detail::tags
+
+    inline const ssl::detail::tags::tcp_server tcp_server;
+    inline const ssl::detail::tags::tcp_client tcp_client;
+
     enum class peer_verify_mode
     {
         none = MBEDTLS_SSL_VERIFY_NONE,
@@ -52,12 +70,9 @@ namespace g6::ssl {
     class async_socket : public net::async_socket
     {
     private:
-        //        template<net::connection_mode mode_, bool tcp_v6 = false>
-        //        static socket create(io_service &ioSvc, std::optional<ssl::certificate> certificate,
-        //                             std::optional<ssl::private_key> pk);
-
-#ifdef g6_SSL_DEBUG
-        static void _mbedtls_debug(void * /* ctx */, int level, const char *file, int line, const char *str) noexcept {
+#ifdef G6_SSL_DEBUG
+        static void _mbedtls_debug(void *ctx, int level, const char *file, int line, const char *str) noexcept {
+            //            auto ssl_ctx = static_cast<mbedtls_ssl_context*>(ctx);
             static constexpr std::string_view fmt = "{}:{}: {}";
             switch (level) {
                 case 0:// shall not happen - no debug
@@ -133,10 +148,7 @@ namespace g6::ssl {
             server
         };
 
-        async_socket(io::context &io_context, int fd, connection_mode mode_, std::optional<ssl::certificate> cert,
-                     std::optional<ssl::private_key> key)
-            : net::async_socket{io_context, fd}, mode_{mode_}, certificate_{std::move(cert)}, key_{std::move(key)},
-              verify_mode_{mode_ == connection_mode::server ? peer_verify_mode::none : peer_verify_mode::required} {
+        void init() {
             if (auto error = mbedtls_ssl_config_defaults(
                     ssl_config_.get(), mode_ == connection_mode::server ? MBEDTLS_SSL_IS_SERVER : MBEDTLS_SSL_IS_CLIENT,
                     MBEDTLS_SSL_TRANSPORT_STREAM, MBEDTLS_SSL_PRESET_DEFAULT);
@@ -149,7 +161,7 @@ namespace g6::ssl {
             // default:
             //  - server: dont verify clients
             //  - client: verify server
-            set_peer_verify_mode(verify_mode_);
+            peer_verify_mode(verify_mode_);
 
             mbedtls_ssl_conf_rng(ssl_config_.get(), mbedtls_ctr_drbg_random, &ssl::context.drbg_context());
 
@@ -168,17 +180,43 @@ namespace g6::ssl {
             }
         }
 
+        async_socket(io::context &io_context, int fd, connection_mode mode_, std::optional<ssl::certificate> cert,
+                     std::optional<ssl::private_key> key)
+            : net::async_socket{io_context, fd}, mode_{mode_}, certificate_{std::move(cert)}, key_{std::move(key)},
+              verify_mode_{mode_ == connection_mode::server ? peer_verify_mode::none : peer_verify_mode::required} {
+            init();
+        }
+
+        async_socket(net::async_socket &&raw_socket, connection_mode mode_, std::optional<ssl::certificate> cert,
+                     std::optional<ssl::private_key> key)
+            : net::async_socket{std::forward<net::async_socket>(raw_socket)}, mode_{mode_},
+              certificate_{std::move(cert)}, key_{std::move(key)}, verify_mode_{mode_ == connection_mode::server
+                                                                                    ? peer_verify_mode::none
+                                                                                    : peer_verify_mode::required} {
+            init();
+        }
+
         friend struct detail::accept_sender;
         friend struct detail::connect_sender;
         friend struct detail::recv_sender;
         friend struct detail::send_sender;
 
-        friend ssl::async_socket tag_invoke(tag_t<net::open_socket>, auto, ssl::certificate &, ssl::private_key &);
+        friend ssl::async_socket tag_invoke(tag_t<net::open_socket>, auto &ctx, ssl::detail::tags::tcp_server,
+                                            net::ip_endpoint const &, ssl::certificate const &,
+                                            ssl::private_key const &);
 
-        friend detail::accept_sender tag_invoke(tag_t<net::async_accept>, async_socket &);
-        friend detail::connect_sender tag_invoke(tag_t<net::async_connect>, async_socket &, net::ip_endpoint);
-        friend detail::recv_sender tag_invoke(tag_t<net::async_recv>, async_socket &, span<std::byte>);
-        friend detail::send_sender tag_invoke(tag_t<net::async_send>, async_socket &, span<std::byte const>);
+        friend auto tag_invoke(tag_t<net::async_accept>, ssl::async_socket &socket);
+
+
+        friend ssl::async_socket tag_invoke(tag_t<net::open_socket>, auto &ctx, ssl::detail::tags::tcp_client);
+
+        friend ssl::async_socket tag_invoke(tag_t<net::open_socket>, auto &ctx, ssl::detail::tags::tcp_client,
+                                            ssl::certificate const &, ssl::private_key const &);
+
+        friend auto tag_invoke(tag_t<ssl::async_encrypt>, ssl::async_socket &socket);
+
+        friend auto tag_invoke(tag_t<net::async_send>, ssl::async_socket &socket, span<const std::byte> buffer);
+        friend auto tag_invoke(tag_t<net::async_recv>, ssl::async_socket &socket, span<std::byte> buffer);
 
         void _mbedtls_setup_callbacks() {
             mbedtls_ssl_set_bio(ssl_context_.get(), this, &ssl::async_socket::_mbedtls_send,
@@ -186,9 +224,137 @@ namespace g6::ssl {
 
             mbedtls_ssl_conf_verify(ssl_config_.get(), &ssl::async_socket::_mbedtls_verify_cert, this);
 
-#ifdef g6_SSL_DEBUG
-            mbedtls_ssl_conf_dbg(ssl_config_.get(), &ssl::socket::_mbedtls_debug, this);
+#ifdef G6_SSL_DEBUG
+            mbedtls_ssl_conf_dbg(ssl_config_.get(), &ssl::async_socket::_mbedtls_debug, this);
 #endif
+        }
+
+        using size_sender = any_sender_of<size_t>;
+
+        template<typename F>
+        auto lazy(F f) {
+            return transform(just(), std::move(f));
+        }
+
+        template<typename F>
+        auto defer(F f) {
+            return let(just(), std::move(f));
+        }
+
+        std::tuple<size_sender, size_t *> handshake_step() {
+            auto *ssl_ctx = ssl_context_.get();
+            auto &net_sock = static_cast<net::async_socket &>(*this);
+            int result = mbedtls_ssl_handshake(ssl_ctx);
+            if (result == MBEDTLS_ERR_SSL_WANT_READ) {
+                return {net::async_recv(net_sock, as_writable_bytes(span{to_receive_.buf, to_receive_.len})),
+                        &to_receive_.actual_len};
+            } else if (result == MBEDTLS_ERR_SSL_WANT_WRITE) {
+                return {net::async_send(net_sock, as_bytes(span{to_send_.buf, to_send_.len})), &to_send_.actual_len};
+            } else if (result == MBEDTLS_ERR_SSL_PEER_VERIFY_FAILED) {
+                if (uint32_t flags = mbedtls_ssl_get_verify_result(ssl_ctx); flags != 0) {
+                    char vrfy_buf[1024];
+                    int res = mbedtls_x509_crt_verify_info(vrfy_buf, sizeof(vrfy_buf), "", flags);
+                    if (res < 0) {
+                        throw std::system_error{res, ssl::error_category, "mbedtls_x509_crt_verify_info"};
+                    } else if (res) {
+                        throw std::system_error{MBEDTLS_ERR_SSL_PEER_VERIFY_FAILED, ssl::error_category,
+                                                std::string{vrfy_buf, size_t(res - 1)}};
+                    }
+                }
+                return {just(0), nullptr};
+            } else if (result != 0) {
+                throw std::system_error(result, ssl::error_category, "mbedtls_ssl_handshake");
+            } else {
+                encrypted_ = true;
+                //                if (mode_ == connection_mode::client) close_send();
+                //else close_send();
+                return {just(result), nullptr};
+            }
+        }
+
+        static constexpr auto sink = [](auto &&...) {};
+        static constexpr auto discard = transform(sink);
+
+        auto handshake() {
+            return sequence(//lazy([]() { fmt::print("starting handshake !\n"); }),
+                            //                            defer([this] { return discard(handshake_step()); })//
+                            defer([this] {
+                                auto [sender, dest_bytes] = handshake_step();
+                                return transform(std::move(sender), [dest_bytes = dest_bytes](size_t bytes) {
+                                    if (dest_bytes) *dest_bytes = bytes;
+                                });
+                            })//
+                                | repeat_effect_until([&]() { return encrypted_; })
+                    //, lazy([&] { printf("handshake terminated !\n"); })
+                );
+        }
+
+        /** @brief Send data.
+         *
+         * @param data      Pointer to the data to send.
+         * @param size      Size of the data pointed by @a data.
+         * @return          Awaitable send task.
+         * @co_return       The sent size.
+         */
+        auto send(const void *data, size_t size) {
+            assert(encrypted_);
+            auto offset = std::make_shared<size_t>(0);// TODO find a smarter way to do this !
+            auto step = [this, offset, data, size]() -> size_sender {
+                int result = mbedtls_ssl_write(ssl_context_.get(), reinterpret_cast<const uint8_t *>(data) + *offset,
+                                               size - *offset);
+                if (result == MBEDTLS_ERR_SSL_WANT_WRITE) {
+                    assert(to_send_);// ensure buffer/len properly setup
+                    return net::async_send(static_cast<net::async_socket &>(*this),
+                                           as_bytes(span{to_send_.buf, to_send_.len}));
+                } else if (result < 0) {
+                    std::error_code ec{result, ssl::error_category};
+                    spdlog::error("g6::ssl::async_socket::send: {}", ec.message());
+                    throw std::system_error(ec, "mbedtls_ssl_write");
+                } else {
+                    *offset += result;
+                    return just(result);
+                }
+            };
+            return sequence(defer([this, step] {
+                                return transform(step(), [this](size_t bytes) { to_send_.actual_len = bytes; });
+                            })                                                                //
+                            | repeat_effect_until([offset, size]() { return *offset >= size; })//
+                            | transform_done([] { return just(); }))
+                 | transform([this, offset]() {
+                       to_send_ = {};
+                       return *offset;
+                   });
+        }
+        auto recv(void *data, size_t size) {
+            assert(encrypted_);
+            auto result = std::make_shared<int>(-1);
+            auto step = [this, result, data, size]() -> size_sender {
+                *result = mbedtls_ssl_read(ssl_context_.get(), reinterpret_cast<uint8_t *>(data), size);
+                if (*result == MBEDTLS_ERR_SSL_WANT_READ) {
+                    assert(to_receive_);// ensure buffer/len properly setup
+                    return net::async_recv(static_cast<net::async_socket &>(*this),
+                                           as_writable_bytes(span{to_receive_.buf, to_receive_.len}));
+                } else if (*result == MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY) {
+                    return just(0);
+                } else if (*result < 0) {
+                    std::error_code ec{*result, ssl::error_category};
+                    spdlog::error("g6::ssl::async_socket::recv: {}", ec.message());
+                    throw std::system_error(ec, "mbedtls_ssl_read");
+                } else {
+                    return just(*result);
+                }
+            };
+            return sequence(defer([this, step] {
+                                return transform(step(), [this](size_t bytes) { to_receive_.actual_len = bytes; });
+                            })                                                        //
+                            | repeat_effect_until([result]() {
+                                  return *result >= 0;
+                              })//
+                            | transform_done([this] {
+                                  to_receive_ = {};
+                                  return just();
+                              }))
+                 | transform([result]() { return *result; });
         }
 
         connection_mode mode_;
@@ -201,6 +367,7 @@ namespace g6::ssl {
         verify_flags verify_flags_{};
         ssl_buf<> to_receive_{};
         ssl_buf<true> to_send_{};
+        std::string hostname_;
 
     public:
         /// @cond
@@ -218,182 +385,39 @@ namespace g6::ssl {
 
         virtual ~async_socket() noexcept = default;
 
-        /// @endcond
-
-        /** @brief Create ssl server socket (ipv4).
-		 *
-		 * @param io_service        The g6 io_service.
-		 * @param certificate       The ssl certificate.
-		 * @param pk                The private key for @a certificate.
-		 * @return                  The created socket.
-		 */
-        //        static socket create_server(io_service &io_service, ssl::certificate &&certificate, ssl::private_key &&pk) {
-        //            return create<net::connection_mode::server>(io_service, std::forward<decltype(certificate)>(certificate),
-        //                                                        std::forward<decltype(pk)>(pk));
-        //        }
-        //
-        //        /** @brief Create ssl client socket (ipv4).
-        //		 *
-        //		 * @param io_service        The g6 io_service.
-        //		 * @param certificate       [optional] The ssl certificate for mutual authentication.
-        //		 * @param pk                [optional] The private key for @a certificate.
-        //		 * @return                  The created socket.
-        //		 */
-        //        static socket create_client(io_service &io_service, std::optional<ssl::certificate> certificate = {},
-        //                                    std::optional<ssl::private_key> pk = {}) {
-        //            return create<net::connection_mode::client>(io_service, std::move(certificate), std::move(pk));
-        //        }
-        //
-        //        /** @brief Create ssl server socket (ipv6).
-        //		 *
-        //		 * @copydetails net::ssl::socket::create_server()
-        //		 */
-        //        static socket create_server_v6(io_service &io_service, ssl::certificate &&certificate, ssl::private_key &&pk) {
-        //            return create<net::connection_mode::server, true>(
-        //                io_service, std::forward<decltype(certificate)>(certificate), std::forward<decltype(pk)>(pk));
-        //        }
-        //
-        //        /** @brief Create ssl client socket (ipv6).
-        //		 *
-        //		 * @copydetails net::ssl::socket::create_client()
-        //		 */
-        //        static socket create_client_v6(io_service &io_service, std::optional<ssl::certificate> certificate = {},
-        //                                       std::optional<ssl::private_key> pk = {}) {
-        //            return create<net::connection_mode::client, true>(io_service, std::move(certificate), std::move(pk));
-        //        }
-
         /** @brief Set peer verification mode.
 		 *
 		 * @param mode      The verification mode.
 		 * @see ssl::peer_verify_mode
 		 */
-        void set_peer_verify_mode(peer_verify_mode mode) noexcept {
+        void set_peer_verify_mode(ssl::peer_verify_mode mode) noexcept {
             verify_mode_ = mode;
             mbedtls_ssl_conf_authmode(ssl_config_.get(), int(mode));
         }
 
+        auto get_peer_verify_mode() const noexcept {
+            return verify_mode_;
+        }
+
         void set_verify_flags(ssl::verify_flags flags) noexcept { verify_flags_ = verify_flags_ | flags; }
         void unset_verify_flags(ssl::verify_flags flags) noexcept { verify_flags_ = verify_flags_ & flags; }
+
+        auto get_verify_flags() const noexcept { return verify_flags_; }
 
         /** @brief Set host name.
 		 *
 		 * @param host_name     The host name.
 		 */
         void host_name(std::string_view host_name) noexcept {
-            mbedtls_ssl_set_hostname(ssl_context_.get(), host_name.data());
+            hostname_ = host_name;
+            mbedtls_ssl_set_hostname(ssl_context_.get(), hostname_.data());
         }
-        //
-        //        /** @brief Process socket encryption (handshake).
-        //		 *
-        //		 * @return Awaitable encryption task.
-        //		 */
-        //        task<void> encrypt() {
-        //            if (encrypted_) co_return;
-        //
-        //            auto stop_token = get_stop_token(context_);
-        //
-        //            while (not stop_token.stop_requested()) {
-        //                auto result = mbedtls_ssl_handshake(ssl_context_.get());
-        //                if (result == 0) {
-        //                    encrypted_ = true;
-        //                    co_return;
-        //                } else if (result == MBEDTLS_ERR_SSL_WANT_READ) {
-        //                    assert(to_receive_);// ensure buffer/len properly setup
-        //                    to_receive_.actual_len = co_await net::async_recv(*this, as_writable_bytes(span{to_receive_.buf, to_receive_.len}));
-        //                } else if (result == MBEDTLS_ERR_SSL_WANT_WRITE) {
-        //                    assert(to_send_);// ensure buffer/len properly setup
-        //                    to_send_.actual_len = co_await net::async_send(*this, as_bytes(span{to_send_.buf, to_send_.len}));
-        //                } else if (result == MBEDTLS_ERR_SSL_PEER_VERIFY_FAILED) {
-        //                    if (uint32_t flags = mbedtls_ssl_get_verify_result(ssl_context_.get()); flags != 0) {
-        //                        char vrfy_buf[2048];
-        //                        int res = mbedtls_x509_crt_verify_info(vrfy_buf, sizeof(vrfy_buf), "", flags);
-        //                        if (res < 0) {
-        //                            throw std::system_error{res, ssl::error_category, "mbedtls_x509_crt_verify_info"};
-        //                        } else if (res) {
-        //                            throw std::system_error{MBEDTLS_ERR_SSL_PEER_VERIFY_FAILED, ssl::error_category,
-        //                                                    std::string{vrfy_buf, size_t(res - 1)}};
-        //                        }
-        //                    }
-        //                } else {
-        //                    throw std::system_error(result, ssl::error_category, "mbedtls_ssl_handshake");
-        //                }
-        //            }
-        //        }
-        //
-        //        /** @brief Send data.
-        //		 *
-        //		 * @param data      Pointer to the data to send.
-        //		 * @param size      Size of the data pointed by @a data.
-        //		 * @return          Awaitable send task.
-        //		 * @co_return       The sent size.
-        //		 */
-        //        task<size_t> send(const void *data, size_t size) {
-        //            size_t offset = 0;
-        //
-        //            auto stop_token = get_stop_token(context_);
-        //
-        //            while (not stop_token.stop_requested()) {
-        //                int result = mbedtls_ssl_write(ssl_context_.get(), reinterpret_cast<const uint8_t *>(data) + offset,
-        //                                               size - offset);
-        //                if (result == MBEDTLS_ERR_SSL_WANT_WRITE) {
-        //                    assert(to_send_);// ensure buffer/len properly setup
-        //                    to_send_.actual_len = co_await net::async_send(*this, as_bytes(span{to_send_.buf, to_send_.len}));
-        //                } else if (result < 0) {
-        //                    throw std::system_error(result, ssl::error_category, "mbedtls_ssl_write");
-        //                } else {
-        //                    offset += result;
-        //                    if (offset >= size) { co_return size; }
-        //                }
-        //            }
-        //        }
-        //
-        //        /** @brief Receive data.
-        //		 *
-        //		 * @param data      Pointer to the data be filled with received data.
-        //		 * @param size      Size of the data pointed by @a data.
-        //		 * @return          Awaitable receive task.
-        //		 * @co_return       The received size.
-        //		 */
-        //
-        //        friend auto tag_invoke(
-        //            tag_t<net::async_recv>,
-        //            async_socket &socket,
-        //            span<std::byte> buffer) noexcept {
-        //
-        //        }
-        //
-        //        task<size_t> recv(void *data, size_t size, std::optional<cancellation_token> ct = {}) {
-        //            while (not ct or not ct->is_cancellation_requested()) {
-        //                int result = mbedtls_ssl_read(ssl_context_.get(), reinterpret_cast<uint8_t *>(data), size);
-        //                if (result == MBEDTLS_ERR_SSL_WANT_READ) {
-        //                    assert(to_receive_);// ensure buffer/len properly setup
-        //                    if (ct) {
-        //                        to_receive_.actual_len = co_await net::socket::recv(to_receive_.buf, to_receive_.len, *ct);
-        //                    } else {
-        //                        to_receive_.actual_len = co_await net::socket::recv(to_receive_.buf, to_receive_.len);
-        //                    }
-        //                } else if (result == MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY) {
-        //                    throw std::system_error(std::make_error_code(std::errc::connection_reset));
-        //                } else if (result < 0) {
-        //                    spdlog::info("mbedtls_ssl_read failed: {}", ssl::error_category.message(result));
-        //                    throw std::system_error(result, ssl::error_category, "mbedtls_ssl_read");
-        //                } else {
-        //                    co_return result;
-        //                }
-        //            }
-        //        }
+
+        auto const& host_name() const noexcept {
+            return hostname_;
+        }
     };
 
-    //    template<net::connection_mode mode_, bool tcp_v6>
-    //    ssl::socket ssl::socket::create(g6::io_service &io_service, std::optional<ssl::certificate> cert,
-    //                                    std::optional<ssl::private_key> pk) {
-    //        if constexpr (mode_ == net::connection_mode::server) { assert(cert && pk); }
-    //        if constexpr (tcp_v6) {
-    //            return socket(io_service, socket::create_tcpv6(io_service), mode_, std::move(cert), std::move(pk));
-    //        } else {
-    //            return socket(io_service, socket::create_tcpv4(io_service), mode_, std::move(cert), std::move(pk));
-    //        }
-    //    }
 }// namespace g6::ssl
 
 #include <g6/ssl/impl/async_socket_impl.hpp>

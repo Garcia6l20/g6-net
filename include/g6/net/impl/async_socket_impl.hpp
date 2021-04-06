@@ -19,11 +19,10 @@ namespace g6::net {
                     return std::tuple{reinterpret_cast<std::byte *>(&sockaddr_storage_), 0,
                                       reinterpret_cast<uint64_t>(&socklen_)};
                 }
-                auto get_result() noexcept {
+                void set_value(auto receiver) noexcept {
                     int fd = this->result_;
-                    return std::tuple{
-                        async_socket(this->context_, fd),
-                        ip_endpoint::from_sockaddr(*reinterpret_cast<const sockaddr *>(&sockaddr_storage_))};
+                    G6_IO_SET_VALUE(receiver, async_socket(this->context_, fd),
+                                    ip_endpoint::from_sockaddr(*reinterpret_cast<const sockaddr *>(&sockaddr_storage_)));
                 }
                 socklen_t socklen_{};
                 sockaddr_storage sockaddr_storage_{};
@@ -43,8 +42,8 @@ namespace g6::net {
         };
 
         struct connect_sender : io::context::base_sender {
-            connect_sender(io::context &context, int fd, ip_endpoint &&endpoint) noexcept
-                : io::context::base_sender{context, fd}, endpoint_{std::forward<ip_endpoint>(endpoint)} {}
+            connect_sender(io::context &context, int fd, ip_endpoint const&endpoint) noexcept
+                : io::context::base_sender{context, fd}, endpoint_{endpoint} {}
 
             template<typename Receiver>
             struct operation
@@ -128,18 +127,23 @@ namespace g6::net {
 
                 template<typename Receiver2>
                 explicit operation(auto &sender, Receiver2 &&r)
-                    : base{sender, std::forward<Receiver2>(r)}, msghdr_{sender.msghdr_} {
-                    std::memcpy(&msghdr_, &sender.msghdr_, sizeof(msghdr_));
+                    : base{sender, std::forward<Receiver2>(r)} {
+                    std::memcpy(&iovec_, &sender.iovec_, sizeof(iovec_));
+                    std::memcpy(&sockaddr_storage_, &sender.sockaddr_storage_, sizeof(sender.sockaddr_storage_size_));
+                    msghdr_.msg_namelen = sender.sockaddr_storage_size_;
                 }
                 auto get_io_data() noexcept { return std::tuple{&msghdr_, 1, 0}; }
-                msghdr &msghdr_;
+                auto set_value(auto receiver) noexcept { G6_IO_SET_VALUE(receiver, size_t(this->result_)); }
+                sockaddr_storage sockaddr_storage_;
+                iovec iovec_;
+                msghdr msghdr_{&sockaddr_storage_, sizeof(sockaddr_storage_), &iovec_, 1};
             };
 
             explicit send_to_sender(io::context &ctx, int fd, int64_t offset, span<const std::byte> buffer,
-                                    std::optional<net::ip_endpoint> endpoint = {})
-                : io::context::base_sender{ctx, fd}, offset_{offset}, iovec_{const_cast<std::byte *>(buffer.data()),
+                                    const net::ip_endpoint& endpoint)
+                : io::context::base_sender{ctx, fd}, iovec_{const_cast<std::byte *>(buffer.data()),
                                                                              buffer.size()} {
-                if (endpoint) msghdr_.msg_namelen = endpoint->to_sockaddr(sockaddr_storage_);
+                sockaddr_storage_size_ = endpoint.to_sockaddr(sockaddr_storage_);
             }
 
             template<typename Receiver>
@@ -147,33 +151,33 @@ namespace g6::net {
                 return operation<Receiver>{*this, (Receiver &&) r};
             }
 
-            int64_t offset_ = 0;
             sockaddr_storage sockaddr_storage_{};
+            size_t sockaddr_storage_size_{};
             iovec iovec_;
-            msghdr msghdr_{&sockaddr_storage_, sizeof(sockaddr_storage_), &iovec_, 1};
-            const std::span<std::byte const> io_data_{
-                std::as_bytes(std::span{reinterpret_cast<std::byte *>(&msghdr_), 1})};
         };
 
         template<typename Receiver>
-        struct recv_from_operation : io::context::base_operation<io::detail::io_operation_id::recvmsg, Receiver, recv_from_operation<Receiver>> {
-            using base = io::context::base_operation<io::detail::io_operation_id::recvmsg, Receiver, recv_from_operation<Receiver>>;
+        struct recv_from_operation : io::context::base_operation<io::detail::io_operation_id::recvmsg, Receiver,
+                                                                 recv_from_operation<Receiver>> {
+            using base = io::context::base_operation<io::detail::io_operation_id::recvmsg, Receiver,
+                                                     recv_from_operation<Receiver>>;
             using base::base;
 
             explicit recv_from_operation(auto &sender, auto &&r)
-                : base{sender, std::forward<decltype(r)>(r)}, msghdr_{sender.msghdr_} {
-                std::memcpy(&msghdr_, &sender.msghdr_, sizeof(msghdr_));
+                : base{sender, std::forward<decltype(r)>(r)} {
+                std::memcpy(&iovec_, &sender.iovec_, sizeof(iovec_));
             }
 
-            auto get_result() noexcept {
-                return std::make_tuple(
-                    size_t(this->result_),
-                    ip_endpoint::from_sockaddr(*reinterpret_cast<const sockaddr *>(msghdr_.msg_name)));
+            auto set_value(auto receiver) noexcept {
+                G6_IO_SET_VALUE(receiver, size_t(this->result_),
+                                ip_endpoint::from_sockaddr(*reinterpret_cast<const sockaddr *>(msghdr_.msg_name)));
             }
 
             auto get_io_data() noexcept { return std::tuple{&msghdr_, 1, 0}; }
 
-            msghdr &msghdr_;
+            sockaddr_storage sockaddr_storage_;
+            iovec iovec_;
+            msghdr msghdr_{&sockaddr_storage_, sizeof(sockaddr_storage_), &iovec_, 1};
         };
 
         struct recv_from_sender : io::context::base_sender {
@@ -183,20 +187,14 @@ namespace g6::net {
             using value_types = Variant<Tuple<size_t, ip_endpoint>>;
 
             explicit recv_from_sender(io::context &ctx, int fd, int64_t offset, span<std::byte> buffer)
-                : io::context::base_sender{ctx, fd}, offset_{offset}, iovec_{const_cast<std::byte *>(buffer.data()),
+                : io::context::base_sender{ctx, fd}, iovec_{const_cast<std::byte *>(buffer.data()),
                                                                              buffer.size()} {}
 
             template<typename Receiver>
             auto connect(Receiver &&r) && {
                 return recv_from_operation<Receiver>{*this, (Receiver &&) r};
             }
-
-            int64_t offset_ = 0;
-            sockaddr_storage sockaddr_storage_{};
             iovec iovec_;
-            msghdr msghdr_{&sockaddr_storage_, sizeof(sockaddr_storage_), &iovec_, 1};
-            const std::span<std::byte const> io_data_{
-                std::as_bytes(std::span{reinterpret_cast<std::byte *>(&msghdr_), 1})};
         };
     }// namespace detail
 
@@ -208,8 +206,12 @@ namespace g6::net {
         return detail::connect_sender{socket.context_, socket.fd_.get(), std::forward<ip_endpoint>(endpoint)};
     }
 
-    auto tag_invoke(tag_t<async_connect>, auto &context, int fd, ip_endpoint &&endpoint) noexcept {
-        return detail::connect_sender{context, fd, std::forward<ip_endpoint>(endpoint)};
+    auto tag_invoke(tag_t<async_connect>, async_socket &socket, ip_endpoint const&endpoint) noexcept {
+        return detail::connect_sender{socket.context_, socket.fd_.get(), endpoint};
+    }
+
+    auto tag_invoke(tag_t<async_connect>, auto &context, int fd, ip_endpoint const&endpoint) noexcept {
+        return detail::connect_sender{context, fd, endpoint};
     }
 
     auto tag_invoke(tag_t<async_send>, async_socket &socket, span<const std::byte> buffer) noexcept {
@@ -221,9 +223,9 @@ namespace g6::net {
     }
 
     auto tag_invoke(tag_t<async_send_to>, async_socket &socket, span<const std::byte> buffer,
-                    net::ip_endpoint &&endpoint) noexcept {
+                    net::ip_endpoint const&endpoint) noexcept {
         return detail::send_to_sender{socket.context_, socket.fd_.get(), 0, buffer,
-                                      std::forward<ip_endpoint>(endpoint)};
+                                      endpoint};
     }
 
     auto tag_invoke(tag_t<async_recv_from>, async_socket &socket, span<std::byte> buffer) noexcept {

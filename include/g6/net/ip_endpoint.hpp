@@ -82,7 +82,7 @@ namespace g6::net {
             }
         }
 
-        int to_sockaddr(sockaddr_storage& address) noexcept {
+        int to_sockaddr(sockaddr_storage& address) const noexcept {
             if (is_ipv4()) {
                 const auto &ipv4EndPoint = to_ipv4();
 

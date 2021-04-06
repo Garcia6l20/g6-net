@@ -1,0 +1,9 @@
+#pragma once
+
+#include <span>
+
+namespace
+{
+	constexpr std::span<const char> cert{ R"(@CERT@)" };
+	constexpr std::span<const char> key{ R"(@KEY@)" };
+}  // namespace

@@ -15,36 +15,64 @@ using namespace g6;
 using namespace std::chrono_literals;
 
 TEST_CASE("ssl tcp tx/rx test", "[g6::ssl::tcp]") {
+    spdlog::set_level(spdlog::level::debug);
+    spdlog::flush_on(spdlog::level::debug);
+    spdlog::flush_on(spdlog::level::info);
+    spdlog::flush_on(spdlog::level::err);
+    spdlog::flush_on(spdlog::level::critical);
+
     io::context ctx{};
+    auto sched = ctx.get_scheduler();
     inplace_stop_source stop_source{};
 
-    ssl::certificate certificate{cert};
-    ssl::private_key private_key{key};
+    const ssl::certificate certificate{cert};
+    const ssl::private_key private_key{key};
 
-    sync_wait(
-        when_all(
-            [&]() -> task<size_t> {
-                scope_guard _ = [&]() noexcept { stop_source.request_stop(); };
-                auto sock = net::open_socket(ctx.get_scheduler(), certificate, private_key);
-                sock.bind(*net::ip_endpoint::from_string("127.0.0.1:4242"));
-                sock.listen();
-                auto [client, client_address] = co_await net::async_accept(sock);
-//                char buffer[1024]{};
-//                auto byte_count = co_await net::async_recv(client, as_writable_bytes(span{buffer}));
-//                co_return byte_count;
-              co_return 0;
-            }(),
-            [&]() -> task<size_t> {
-                //                      auto sock = net::open_socket(ctx.get_scheduler(), AF_INET, SOCK_STREAM);
-                //                      co_await net::async_connect(sock, *net::ip_endpoint::from_string("127.0.0.1:4242"));
-                //                      const char buffer[] = {"hello world !!!"};
-                //                      auto sent = co_await net::async_send(sock, as_bytes(span{buffer}));
-                //                      co_return sent;
-                co_return 0;
-            }(),
-            [&]() -> task<void> {
-                ctx.run(stop_source.get_token());
-                co_return;
-            }()) |
-        transform([](auto &&received, auto &&sent, ...) { REQUIRE(sent == received); }));
+    auto server =
+        net::open_socket(ctx, ssl::tcp_server, *net::ip_endpoint::from_string("127.0.0.1:0"), certificate, private_key);
+    server.host_name("localhost");
+    server.set_peer_verify_mode(ssl::peer_verify_mode::optional);
+    server.set_verify_flags(ssl::verify_flags::allow_untrusted);
+
+    auto server_endpoint = *server.local_endpoint();
+
+    spdlog::info("server endpoint: {}", server_endpoint.to_string());
+
+    sync_wait(when_all(
+                  [&]() -> task<size_t> {
+                      scope_guard _ = [&]() noexcept { stop_source.request_stop(); };
+                      server.listen();
+                      auto [session, client_address] = co_await net::async_accept(server);
+                      co_await ssl::async_encrypt(session);
+                      char buffer[1024]{};
+                      try {
+                          co_await schedule(sched);
+                          co_await schedule(sched);
+                          auto received = co_await net::async_recv(session, as_writable_bytes(span{buffer}));
+                          spdlog::info("server received: {}", std::string_view{buffer, size_t(received)});
+                          co_return received;
+                      } catch (std::system_error &error) {
+                          spdlog::error("server error: {}", error.what());
+                          co_return std::numeric_limits<size_t>::max();
+                      }
+                  }(),
+                  [&]() -> task<size_t> {
+                      auto client = net::open_socket(ctx, ssl::tcp_client);
+                      client.host_name("localhost");
+                      client.set_peer_verify_mode(ssl::peer_verify_mode::required);
+                      client.set_verify_flags(ssl::verify_flags::allow_untrusted);
+                      co_await net::async_connect(client, server_endpoint);
+                      co_await ssl::async_encrypt(client);
+                      const char buffer[] = {"hello world !!!"};
+                      auto sent = co_await net::async_send(client, as_bytes(span{buffer}));
+                      spdlog::info("client sent: {} bytes", sent);
+                      co_return sent;
+                  }(),
+                  [&]() -> task<void> {
+                      ctx.run(stop_source.get_token());
+                      co_return;
+                  }())
+              | transform([](auto &&server_result, auto &&client_result, ...) {
+                    REQUIRE(server_result == client_result);
+                }));
 }

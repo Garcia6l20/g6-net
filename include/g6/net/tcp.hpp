@@ -19,10 +19,10 @@ namespace g6::net {
 
     template<class IOContext2>
     auto tag_invoke(unifex::tag_t<open_socket>, IOContext2 &ctx, detail::tags::tcp_client const &,
-                    ip_endpoint &&endpoint) {
+                    ip_endpoint const&endpoint) {
         auto sock = open_socket(ctx, AF_INET, SOCK_STREAM);
         int fd = sock.fd_.get();
-        return transform(net::async_connect(ctx, fd, std::forward<ip_endpoint>(endpoint)), [sock = std::move(sock)](int) mutable {
+        return transform(net::async_connect(ctx, fd, endpoint), [sock = std::move(sock)](int) mutable {
                      return std::move(sock);
                    });
     }

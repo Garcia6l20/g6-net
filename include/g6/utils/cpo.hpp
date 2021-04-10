@@ -6,20 +6,17 @@
 namespace g6::_generic_cpo {
     template<typename Concrete>
     struct generic_cpo {
-        template<typename Executor, typename... Args>
+        template<typename... Args>
         auto operator()(
-            Executor &&ex,
             Args &&...args) const
             noexcept(unifex::is_nothrow_tag_invocable_v<
                      Concrete,
-                     Executor &&,
                      Args...>)
                 -> unifex::tag_invoke_result_t<
                     Concrete,
-                    Executor &&,
                     Args...> {
             return unifex::tag_invoke(
-                *static_cast<Concrete const *>(this), std::forward<Executor>(ex), std::forward<Args>(args)...);
+                *static_cast<Concrete const *>(this), std::forward<Args>(args)...);
         }
     };
 }// namespace g6::_generic_cpo

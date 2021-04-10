@@ -2,200 +2,289 @@
 #define G6_NET_IMPL_ASYNC_SOCKET_HPP_
 
 #include <g6/net/async_socket.hpp>
+#include <unifex/exception.hpp>
 
 namespace g6::net {
     namespace detail {
-        struct accept_sender : io::context::base_sender {
-            accept_sender(io::context &context, int fd) noexcept : io::context::base_sender{context, fd} {}
-
+        class accept_sender
+        {
             template<typename Receiver>
-            struct operation
-                : io::context::base_operation<io::detail::io_operation_id::accept, Receiver, operation<Receiver>> {
-                using base =
-                    io::context::base_operation<io::detail::io_operation_id::accept, Receiver, operation<Receiver>>;
-                using base::base;
+            struct operation : io::context::io_operation_base<IORING_OP_ACCEPT, Receiver, operation> {
+                friend io::context;
+
+                explicit operation(accept_sender &sender, Receiver &&r)
+                    : io::context::io_operation_base<IORING_OP_ACCEPT, Receiver, operation>{sender, (Receiver &&) r} {}
                 auto get_io_data() noexcept {
-                    socklen_ = sizeof(sockaddr_storage_);
                     return std::tuple{reinterpret_cast<std::byte *>(&sockaddr_storage_), 0,
                                       reinterpret_cast<uint64_t>(&socklen_)};
                 }
-                void set_value(auto receiver) noexcept {
-                    int fd = this->result_;
-                    G6_IO_SET_VALUE(receiver, async_socket(this->context_, fd),
-                                    ip_endpoint::from_sockaddr(*reinterpret_cast<const sockaddr *>(&sockaddr_storage_)));
+                auto get_result() noexcept {
+                    return std::make_tuple(
+                        async_socket{this->context_, this->result_},
+                        net::ip_endpoint::from_sockaddr(*reinterpret_cast<const sockaddr *>(&sockaddr_storage_)));
                 }
-                socklen_t socklen_{};
+                socklen_t socklen_{sizeof(sockaddr_storage)};
                 sockaddr_storage sockaddr_storage_{};
             };
+            template<auto, typename, template<class> typename>
+            friend class io::context::io_operation_base;
 
-            // Produces void result.
+        public:
+            // Produces number of bytes read.
             template<template<typename...> class Variant, template<typename...> class Tuple>
-            using value_types = Variant<Tuple<async_socket, ip_endpoint>>;
+            using value_types = Variant<Tuple<async_socket, net::ip_endpoint>>;
 
+            // Note: Only case it might complete with exception_ptr is if the
+            // receiver's set_value() exits with an exception.
             template<template<typename...> class Variant>
             using error_types = Variant<std::error_code, std::exception_ptr>;
+
+            static constexpr bool sends_done = true;
+
+            explicit accept_sender(io::context &context, int fd) noexcept : context_{context}, fd_{fd} {}
 
             template<typename Receiver>
             auto connect(Receiver &&r) && {
                 return operation<Receiver>{*this, (Receiver &&) r};
             }
+
+        private:
+            io::context &context_;
+            int fd_;
         };
 
-        struct connect_sender : io::context::base_sender {
-            connect_sender(io::context &context, int fd, ip_endpoint const&endpoint) noexcept
-                : io::context::base_sender{context, fd}, endpoint_{endpoint} {}
-
+        class connect_sender
+        {
             template<typename Receiver>
-            struct operation
-                : io::context::base_operation<io::detail::io_operation_id::connect, Receiver, operation<Receiver>> {
-                using base =
-                    io::context::base_operation<io::detail::io_operation_id::connect, Receiver, operation<Receiver>>;
-                using base::base;
-                template<typename Receiver2>
-                explicit operation(const auto &sender, Receiver2 &&r, ip_endpoint &&endpoint)
-                    : base{sender, std::forward<Receiver2>(r)} {
-                    addr_len_ = endpoint.to_sockaddr(sockaddr_storage_);
+            struct operation : io::context::io_operation_base<IORING_OP_CONNECT, Receiver, operation> {
+
+                friend io::context;
+
+                explicit operation(connect_sender &sender, Receiver &&r)
+                    : io::context::io_operation_base<IORING_OP_CONNECT, Receiver, operation>{sender, (Receiver &&) r} {
+                    addr_len_ = sender.endpoint_.to_sockaddr(sockaddr_storage_);
                 }
+
+                auto get_result() noexcept { return int(this->result_); }
+
                 auto get_io_data() noexcept {
                     return std::tuple{reinterpret_cast<std::byte *>(&sockaddr_storage_), 0, addr_len_};
                 }
                 sockaddr_storage sockaddr_storage_{};
                 size_t addr_len_;
             };
+            template<auto, typename, template<class> typename>
+            friend class io::context::io_operation_base;
 
-            // Produces int result.
+        public:
+            // Produces number of bytes read.
             template<template<typename...> class Variant, template<typename...> class Tuple>
             using value_types = Variant<Tuple<int>>;
 
+            // Note: Only case it might complete with exception_ptr is if the
+            // receiver's set_value() exits with an exception.
             template<template<typename...> class Variant>
             using error_types = Variant<std::error_code, std::exception_ptr>;
 
-            template<typename Receiver>
-            auto connect(Receiver &&r) && {
-                return operation<Receiver>{*this, (Receiver &&) r, std::move(endpoint_)};
-            }
+            static constexpr bool sends_done = true;
 
-            ip_endpoint endpoint_{};
-            std::span<std::byte const> io_data_{};
-            static constexpr int64_t offset_{0};
-        };
-
-        template<io::detail::io_operation_id io_op, typename Receiver, typename DataT = std::byte>
-        struct io_data_operation
-            : io::context::base_operation<io_op, Receiver, io_data_operation<io_op, Receiver, DataT>> {
-            using base = io::context::base_operation<io_op, Receiver, io_data_operation<io_op, Receiver, DataT>>;
-
-            template<typename Receiver2>
-            explicit io_data_operation(const auto &sender, Receiver2 &&r)
-                : base{sender, std::forward<Receiver2>(r)}, io_data_{sender.io_data_} {}
-            auto get_io_data() noexcept { return std::tuple{io_data_.data(), io_data_.size_bytes(), 0}; }
-            std::span<DataT> io_data_{};
-        };
-
-        struct send_sender : io::context::base_sender {
-            send_sender(io::context &context, int fd, std::span<std::byte const> buffer) noexcept
-                : io::context::base_sender{context, fd}, io_data_{buffer} {}
-
-            template<typename Receiver>
-            auto connect(Receiver &&r) && {
-                return detail::io_data_operation<io::detail::io_operation_id::send, Receiver, std::byte const>{
-                    *this, (Receiver &&) r};
-            }
-
-            std::span<std::byte const> io_data_{};
-        };
-
-        struct recv_sender : io::context::base_sender {
-            recv_sender(io::context &context, int fd, std::span<std::byte> buffer) noexcept
-                : io::context::base_sender{context, fd}, io_data_{buffer} {}
-
-            template<typename Receiver>
-            auto connect(Receiver &&r) && {
-                return detail::io_data_operation<io::detail::io_operation_id::recv, Receiver>{*this, (Receiver &&) r};
-            }
-
-            std::span<std::byte> io_data_{};
-        };
-
-        struct send_to_sender : io::context::base_sender {
-
-            template<typename Receiver>
-            struct operation
-                : io::context::base_operation<io::detail::io_operation_id::sendmsg, Receiver, operation<Receiver>> {
-                using base =
-                    io::context::base_operation<io::detail::io_operation_id::sendmsg, Receiver, operation<Receiver>>;
-
-                template<typename Receiver2>
-                explicit operation(auto &sender, Receiver2 &&r)
-                    : base{sender, std::forward<Receiver2>(r)} {
-                    std::memcpy(&iovec_, &sender.iovec_, sizeof(iovec_));
-                    std::memcpy(&sockaddr_storage_, &sender.sockaddr_storage_, sizeof(sender.sockaddr_storage_size_));
-                    msghdr_.msg_namelen = sender.sockaddr_storage_size_;
-                }
-                auto get_io_data() noexcept { return std::tuple{&msghdr_, 1, 0}; }
-                auto set_value(auto receiver) noexcept { G6_IO_SET_VALUE(receiver, size_t(this->result_)); }
-                sockaddr_storage sockaddr_storage_;
-                iovec iovec_;
-                msghdr msghdr_{&sockaddr_storage_, sizeof(sockaddr_storage_), &iovec_, 1};
-            };
-
-            explicit send_to_sender(io::context &ctx, int fd, int64_t offset, span<const std::byte> buffer,
-                                    const net::ip_endpoint& endpoint)
-                : io::context::base_sender{ctx, fd}, iovec_{const_cast<std::byte *>(buffer.data()),
-                                                                             buffer.size()} {
-                sockaddr_storage_size_ = endpoint.to_sockaddr(sockaddr_storage_);
-            }
+            explicit connect_sender(io::context &context, int fd, net::ip_endpoint endpoint) noexcept
+                : context_{context}, fd_{fd}, endpoint_{std::move(endpoint)} {}
 
             template<typename Receiver>
             auto connect(Receiver &&r) && {
                 return operation<Receiver>{*this, (Receiver &&) r};
             }
 
-            sockaddr_storage sockaddr_storage_{};
-            size_t sockaddr_storage_size_{};
-            iovec iovec_;
+        private:
+            io::context &context_;
+            int fd_;
+            net::ip_endpoint endpoint_;
         };
 
-        template<typename Receiver>
-        struct recv_from_operation : io::context::base_operation<io::detail::io_operation_id::recvmsg, Receiver,
-                                                                 recv_from_operation<Receiver>> {
-            using base = io::context::base_operation<io::detail::io_operation_id::recvmsg, Receiver,
-                                                     recv_from_operation<Receiver>>;
-            using base::base;
+        class recv_sender
+        {
+            template<typename Receiver>
+            struct operation : io::context::io_operation_base<IORING_OP_RECV, Receiver, operation> {
+                friend io::context;
 
-            explicit recv_from_operation(auto &sender, auto &&r)
-                : base{sender, std::forward<decltype(r)>(r)} {
-                std::memcpy(&iovec_, &sender.iovec_, sizeof(iovec_));
-            }
+                explicit operation(recv_sender &sender, Receiver &&r)
+                    : io::context::io_operation_base<IORING_OP_RECV, Receiver, operation>{sender, (Receiver &&) r},
+                      buffer_{sender.buffer_} {}
+                auto get_io_data() noexcept { return std::tuple{buffer_.data(), buffer_.size(), 0}; }
+                auto get_result() noexcept { return size_t(this->result_); }
+                span<std::byte> buffer_;
+            };
+            template<auto, typename, template<class> typename>
+            friend class io::context::io_operation_base;
 
-            auto set_value(auto receiver) noexcept {
-                G6_IO_SET_VALUE(receiver, size_t(this->result_),
-                                ip_endpoint::from_sockaddr(*reinterpret_cast<const sockaddr *>(msghdr_.msg_name)));
-            }
-
-            auto get_io_data() noexcept { return std::tuple{&msghdr_, 1, 0}; }
-
-            sockaddr_storage sockaddr_storage_;
-            iovec iovec_;
-            msghdr msghdr_{&sockaddr_storage_, sizeof(sockaddr_storage_), &iovec_, 1};
-        };
-
-        struct recv_from_sender : io::context::base_sender {
-
+        public:
             // Produces number of bytes read.
             template<template<typename...> class Variant, template<typename...> class Tuple>
-            using value_types = Variant<Tuple<size_t, ip_endpoint>>;
+            using value_types = Variant<Tuple<size_t>>;
 
-            explicit recv_from_sender(io::context &ctx, int fd, int64_t offset, span<std::byte> buffer)
-                : io::context::base_sender{ctx, fd}, iovec_{const_cast<std::byte *>(buffer.data()),
-                                                                             buffer.size()} {}
+            // Note: Only case it might complete with exception_ptr is if the
+            // receiver's set_value() exits with an exception.
+            template<template<typename...> class Variant>
+            using error_types = Variant<std::error_code, std::exception_ptr>;
+
+            static constexpr bool sends_done = true;
+
+            explicit recv_sender(io::context &context, int fd, span<std::byte> buffer) noexcept
+                : context_{context}, fd_{fd}, buffer_{buffer} {}
 
             template<typename Receiver>
             auto connect(Receiver &&r) && {
-                return recv_from_operation<Receiver>{*this, (Receiver &&) r};
+                return operation<Receiver>{*this, (Receiver &&) r};
             }
-            iovec iovec_;
+
+        private:
+            io::context &context_;
+            int fd_;
+            span<std::byte> buffer_;
         };
+
+        class recv_from_sender
+        {
+            template<typename Receiver>
+            struct operation : io::context::io_operation_base<IORING_OP_RECVMSG, Receiver, operation> {
+                friend io::context;
+
+                explicit operation(recv_from_sender &sender, Receiver &&r)
+                    : io::context::io_operation_base<IORING_OP_RECVMSG, Receiver, operation>{sender, (Receiver &&) r} {
+                    iovec_.iov_base = const_cast<std::byte *>(sender.buffer_.data());
+                    iovec_.iov_len = sender.buffer_.size();
+                }
+                auto get_io_data() noexcept { return std::tuple{&msghdr_, 1, 0}; }
+                auto get_result() noexcept {
+                    return std::make_tuple(
+                        size_t(this->result_),
+                        net::ip_endpoint::from_sockaddr(*reinterpret_cast<sockaddr *>(&sockaddr_storage_)));
+                }
+                sockaddr_storage sockaddr_storage_;
+                iovec iovec_;
+                msghdr msghdr_{&sockaddr_storage_, sizeof(sockaddr_storage_), &iovec_, 1};
+            };
+            template<auto, typename, template<class> typename>
+            friend class io::context::io_operation_base;
+
+        public:
+            // Produces number of bytes read.
+            template<template<typename...> class Variant, template<typename...> class Tuple>
+            using value_types = Variant<Tuple<size_t, net::ip_endpoint>>;
+
+            // Note: Only case it might complete with exception_ptr is if the
+            // receiver's set_value() exits with an exception.
+            template<template<typename...> class Variant>
+            using error_types = Variant<std::error_code, std::exception_ptr>;
+
+            static constexpr bool sends_done = true;
+
+            explicit recv_from_sender(io::context &context, int fd, span<std::byte> buffer) noexcept
+                : context_{context}, fd_{fd}, buffer_{buffer} {}
+
+            template<typename Receiver>
+            auto connect(Receiver &&r) && {
+                return operation<Receiver>{*this, (Receiver &&) r};
+            }
+
+        private:
+            io::context &context_;
+            int fd_;
+            span<const std::byte> buffer_;
+        };
+
+        class send_sender
+        {
+            template<typename Receiver>
+            struct operation : io::context::io_operation_base<IORING_OP_SEND, Receiver, operation> {
+                friend io::context;
+
+                explicit operation(send_sender &sender, Receiver &&r)
+                    : io::context::io_operation_base<IORING_OP_SEND, Receiver, operation>{sender, (Receiver &&) r},
+                      buffer_{sender.buffer_} {}
+                auto get_io_data() noexcept { return std::tuple{buffer_.data(), buffer_.size(), 0}; }
+                auto get_result() noexcept { return size_t(this->result_); }
+                span<const std::byte> buffer_;
+            };
+            template<auto, typename, template<class> typename>
+            friend class io::context::io_operation_base;
+
+        public:
+            // Produces number of bytes read.
+            template<template<typename...> class Variant, template<typename...> class Tuple>
+            using value_types = Variant<Tuple<size_t>>;
+
+            // Note: Only case it might complete with exception_ptr is if the
+            // receiver's set_value() exits with an exception.
+            template<template<typename...> class Variant>
+            using error_types = Variant<std::error_code, std::exception_ptr>;
+
+            static constexpr bool sends_done = true;
+
+            explicit send_sender(io::context &context, int fd, span<const std::byte> buffer) noexcept
+                : context_{context}, fd_{fd}, buffer_{buffer} {}
+
+            template<typename Receiver>
+            auto connect(Receiver &&r) && {
+                return operation<Receiver>{*this, (Receiver &&) r};
+            }
+
+        private:
+            io::context &context_;
+            int fd_;
+            span<const std::byte> buffer_;
+        };
+
+        class send_to_sender
+        {
+            template<typename Receiver>
+            struct operation : io::context::io_operation_base<IORING_OP_SENDMSG, Receiver, operation> {
+                friend io::context;
+
+                explicit operation(send_to_sender &sender, Receiver &&r)
+                    : io::context::io_operation_base<IORING_OP_SENDMSG, Receiver, operation>{sender, (Receiver &&) r} {
+                    iovec_.iov_base = const_cast<std::byte *>(sender.buffer_.data());
+                    iovec_.iov_len = sender.buffer_.size();
+                    msghdr_.msg_namelen = sender.to_.to_sockaddr(sockaddr_storage_);
+                }
+                auto get_io_data() noexcept { return std::tuple{&msghdr_, 1, 0}; }
+                auto get_result() noexcept { return size_t(this->result_); }
+                sockaddr_storage sockaddr_storage_;
+                iovec iovec_;
+                msghdr msghdr_{&sockaddr_storage_, sizeof(sockaddr_storage_), &iovec_, 1};
+            };
+            template<auto, typename, template<class> typename>
+            friend class io::context::io_operation_base;
+
+        public:
+            // Produces number of bytes read.
+            template<template<typename...> class Variant, template<typename...> class Tuple>
+            using value_types = Variant<Tuple<size_t>>;
+
+            // Note: Only case it might complete with exception_ptr is if the
+            // receiver's set_value() exits with an exception.
+            template<template<typename...> class Variant>
+            using error_types = Variant<std::error_code, std::exception_ptr>;
+
+            static constexpr bool sends_done = true;
+
+            explicit send_to_sender(io::context &context, int fd, const net::ip_endpoint &endpoint,
+                                    span<const std::byte> buffer) noexcept
+                : context_{context}, fd_{fd}, buffer_{buffer}, to_{endpoint} {}
+
+            template<typename Receiver>
+            auto connect(Receiver &&r) && {
+                return operation<Receiver>{*this, (Receiver &&) r};
+            }
+
+        private:
+            io::context &context_;
+            int fd_;
+            span<const std::byte> buffer_;
+            net::ip_endpoint to_;
+        };
+
     }// namespace detail
 
     auto tag_invoke(tag_t<async_accept>, async_socket &socket) noexcept {
@@ -206,11 +295,7 @@ namespace g6::net {
         return detail::connect_sender{socket.context_, socket.fd_.get(), std::forward<ip_endpoint>(endpoint)};
     }
 
-    auto tag_invoke(tag_t<async_connect>, async_socket &socket, ip_endpoint const&endpoint) noexcept {
-        return detail::connect_sender{socket.context_, socket.fd_.get(), endpoint};
-    }
-
-    auto tag_invoke(tag_t<async_connect>, auto &context, int fd, ip_endpoint const&endpoint) noexcept {
+    auto tag_invoke(tag_t<async_connect>, auto &context, int fd, ip_endpoint const &endpoint) noexcept {
         return detail::connect_sender{context, fd, endpoint};
     }
 
@@ -223,13 +308,12 @@ namespace g6::net {
     }
 
     auto tag_invoke(tag_t<async_send_to>, async_socket &socket, span<const std::byte> buffer,
-                    net::ip_endpoint const&endpoint) noexcept {
-        return detail::send_to_sender{socket.context_, socket.fd_.get(), 0, buffer,
-                                      endpoint};
+                    net::ip_endpoint const &endpoint) noexcept {
+        return detail::send_to_sender{socket.context_, socket.fd_.get(), endpoint, buffer};
     }
 
     auto tag_invoke(tag_t<async_recv_from>, async_socket &socket, span<std::byte> buffer) noexcept {
-        return detail::recv_from_sender{socket.context_, socket.fd_.get(), 0, buffer};
+        return detail::recv_from_sender{socket.context_, socket.fd_.get(), buffer};
     }
 }// namespace g6::net
 

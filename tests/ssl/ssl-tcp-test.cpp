@@ -16,10 +16,6 @@ using namespace std::chrono_literals;
 
 TEST_CASE("ssl tcp tx/rx test", "[g6::ssl::tcp]") {
     spdlog::set_level(spdlog::level::debug);
-    spdlog::flush_on(spdlog::level::debug);
-    spdlog::flush_on(spdlog::level::info);
-    spdlog::flush_on(spdlog::level::err);
-    spdlog::flush_on(spdlog::level::critical);
 
     io::context ctx{};
     auto sched = ctx.get_scheduler();
@@ -46,8 +42,6 @@ TEST_CASE("ssl tcp tx/rx test", "[g6::ssl::tcp]") {
                       co_await ssl::async_encrypt(session);
                       char buffer[1024]{};
                       try {
-                          co_await schedule(sched);
-                          co_await schedule(sched);
                           auto received = co_await net::async_recv(session, as_writable_bytes(span{buffer}));
                           spdlog::info("server received: {}", std::string_view{buffer, size_t(received)});
                           co_return received;
@@ -61,7 +55,7 @@ TEST_CASE("ssl tcp tx/rx test", "[g6::ssl::tcp]") {
                       client.host_name("localhost");
                       client.set_peer_verify_mode(ssl::peer_verify_mode::required);
                       client.set_verify_flags(ssl::verify_flags::allow_untrusted);
-                      co_await net::async_connect(client, server_endpoint);
+                      co_await net::async_connect(client, std::move(server_endpoint));
                       co_await ssl::async_encrypt(client);
                       const char buffer[] = {"hello world !!!"};
                       auto sent = co_await net::async_send(client, as_bytes(span{buffer}));
@@ -75,4 +69,5 @@ TEST_CASE("ssl tcp tx/rx test", "[g6::ssl::tcp]") {
               | transform([](auto &&server_result, auto &&client_result, ...) {
                     REQUIRE(server_result == client_result);
                 }));
+    spdlog::debug("done");
 }

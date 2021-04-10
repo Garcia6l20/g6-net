@@ -2,8 +2,7 @@
 // Copyright (c) Lewis Baker
 // Licenced under MIT license. See LICENSE.txt for details.
 ///////////////////////////////////////////////////////////////////////////////
-#ifndef G6_NET_IP_ENDPOINT_HPP_
-#define G6_NET_IP_ENDPOINT_HPP_
+#pragma once
 
 #include <g6/net/ip_address.hpp>
 #include <g6/net/ipv4_endpoint.hpp>
@@ -12,6 +11,7 @@
 #include <cassert>
 #include <optional>
 #include <string>
+#include <cinttypes>
 #include <type_traits>
 
 #include <cstring>
@@ -191,5 +191,3 @@ namespace g6::net {
         return !(*this < rhs);
     }
 }// namespace g6::net
-
-#endif // G6_NET_IP_ENDPOINT_HPP_

@@ -14,10 +14,7 @@
 #include <g6/net/ip_endpoint.hpp>
 
 using namespace g6;
-TEST_CASE("dumb", "[g6::net::udp]") {
-    io::context ctx{};
-    auto sock = net::open_socket(ctx, AF_INET, SOCK_DGRAM);
-}
+
 TEST_CASE("udp tx/rx test", "[g6::net::udp]") {
     io::context ctx{};
     inplace_stop_source stop_source{};

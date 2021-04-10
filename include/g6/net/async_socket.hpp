@@ -44,7 +44,7 @@ namespace g6::net {
             }
         }
 
-        std::optional<net::ip_endpoint> local_endpoint() {
+        std::optional<net::ip_endpoint> local_endpoint() const {
             sockaddr sockaddr_in_{};
             socklen_t sockaddr_in_len = sizeof(sockaddr_in_);
             if (getsockname(fd_.get(), &sockaddr_in_, &sockaddr_in_len) < 0) { return std::nullopt; }

@@ -76,11 +76,15 @@ namespace g6::io {
     public:
         template <auto op_code, typename Receiver, template <class> typename Operation>
         struct io_operation_base : completion_base {
+            static constexpr bool is_stop_ever_possible =
+                !is_stop_never_possible_v<stop_token_type_t<Receiver>>;
+
             template<typename Sender>
             explicit io_operation_base(Sender& sender, Receiver&& r) noexcept
                 : context_{sender.context_}
                 , fd_{sender.fd_}
-                , receiver_{(Receiver &&) r} {}
+                , receiver_{(Receiver &&) r}
+                , can_be_cancelled_{get_stop_token(r).stop_possible()} {}
 
             void start() noexcept {
                 if (!context_.is_running_on_io_thread()) {
@@ -97,6 +101,114 @@ namespace g6::io {
 
             static auto& get_impl(operation_base* op) noexcept {
                 return *static_cast<Operation<Receiver>*>(op);
+            }
+
+            void request_stop() noexcept {
+                stop_callback_.destruct();
+                if (context_.is_running_on_io_thread()) {
+                    request_stop_local();
+                } else {
+                    request_stop_remote();
+                }
+            }
+
+            enum class state {
+                none = 0, pending = 0b01, cancel_pending = 0b10
+            };
+            std::atomic<state> state_;
+
+            struct cancel_callback {
+                io_operation_base& op_;
+
+                void operator()() noexcept {
+                    op_.request_stop();
+                }
+            };
+
+            manual_lifetime<typename stop_token_type_t<
+                Receiver>::template callback_type<cancel_callback>>
+                stop_callback_;
+
+            bool can_be_cancelled_;
+
+            void request_stop_local() noexcept {
+                assert(context_.is_running_on_io_thread());
+
+                this->execute_ = &io_operation_base::cleanup_and_complete_with_done;
+
+                auto state = this->state_.load(std::memory_order_relaxed);
+                if (state == state::pending) {
+                    context_.schedule_local(this);
+                } else {
+                    // Timer already elapsed and added to ready-to-run queue.
+                }
+            }
+
+            static void complete_with_done(operation_base* op) noexcept {
+                // Avoid instantiating set_done() if we're not going to call it.
+                if constexpr (is_stop_ever_possible) {
+                    auto& self = get_impl(op);
+                    unifex::set_done(std::move(self).receiver_);
+                } else {
+                    // This should never be called if stop is not possible.
+                    assert(false);
+                }
+            }
+
+            void request_stop_remote() noexcept {
+                auto oldState = this->state_.load(std::memory_order_acquire);
+                this->state_.store(
+                    state::cancel_pending,
+                    std::memory_order_release);
+                if (oldState == state::pending) {
+                    // Timer had not yet elapsed.
+                    // We are responsible for scheduling the completion of this timer
+                    // operation.
+                    this->execute_ =
+                        &io_operation_base::cleanup_and_complete_with_done;
+                    this->context_.schedule_remote(this);
+                }
+            }
+
+            static void cleanup_and_complete_with_done(
+                operation_base* op) noexcept {
+                // Avoid instantiating set_done() if we're never going to call it.
+                if constexpr (is_stop_ever_possible) {
+                    auto& self = get_impl(op);
+                    assert(self.context_.is_running_on_io_thread());
+
+                    auto state = self.state_.load(std::memory_order_relaxed);
+                    if (state == state::pending) {
+                        // Timer not yet removed from the timers_ list. Do that now.
+
+                        auto populateSqe = [self=&self](io_uring_sqe& sqe) mutable noexcept {
+                          const auto [data, len, off] = self->get_io_data();
+
+                          sqe.opcode = IORING_OP_ASYNC_CANCEL;
+                          sqe.flags = 0;
+                          sqe.ioprio = 0;
+                          sqe.fd = -1;
+                          sqe.off = 0;
+                          sqe.addr = reinterpret_cast<std::uintptr_t>(data);
+                          sqe.len = 0;
+                          sqe.cancel_flags = 0;
+
+                          sqe.user_data = reinterpret_cast<std::uintptr_t>(
+                              static_cast<io_operation_base*>(self));
+                          self->execute_ = &io_operation_base::complete_with_done;
+                        };
+
+                        if (!self.context_.try_submit_io(populateSqe)) {
+                            self.execute_ = &io_operation_base::cleanup_and_complete_with_done;
+                            self.context_.schedule_pending_io(&self);
+                        }
+                    }
+
+                    unifex::set_done(std::move(self).receiver_);
+                } else {
+                    // Should never be called if stop is not possible.
+                    assert(false);
+                }
             }
 
             auto& get_impl() noexcept { return get_impl(this); }
@@ -118,6 +230,15 @@ namespace g6::io {
                   sqe.user_data = reinterpret_cast<std::uintptr_t>(
                       static_cast<io_operation_base*>(this));
                   this->execute_ = &io_operation_base::on_operation_complete;
+
+                  this->state_.store(
+                      state::pending,
+                      std::memory_order_acq_rel);
+
+                  if constexpr (is_stop_ever_possible) {
+                      stop_callback_.construct(
+                          get_stop_token(receiver_), cancel_callback{*this});
+                  }
                 };
 
                 if (!context_.try_submit_io(populateSqe)) {
@@ -154,6 +275,7 @@ namespace g6::io {
 
             static void on_operation_complete(operation_base* op) noexcept {
                 auto& self = get_impl(op);
+                self.stop_callback_.destruct();
                 if (self.result_ >= 0) {
                     self.set_result(self.get_result());
                 } else if (self.result_ == -ECANCELED) {

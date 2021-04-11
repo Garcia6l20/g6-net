@@ -16,6 +16,30 @@
 using namespace g6;
 using namespace std::chrono_literals;
 
+TEST_CASE("tcp stop server test", "[g6::net::tcp]") {
+    io::context ctx{};
+    inplace_stop_source stop_source{};
+    auto sched = ctx.get_scheduler();
+
+    sync_wait(when_all(
+        [&]() -> task<void> {
+            auto _ = scope_guard{[&]() noexcept {  }};
+            auto sock = net::open_socket(ctx, AF_INET, SOCK_STREAM);
+            sock.bind(*net::ip_endpoint::from_string("127.0.0.1:0"));
+            sock.listen();
+            auto [client, client_address] =
+                co_await with_query_value(net::async_accept(sock), get_stop_token, stop_source.get_token());
+        }(),
+        [&]() -> task<void> {
+            co_await schedule_at(sched, now(sched) + 100ms);
+            stop_source.request_stop();
+        }(),
+        [&]() -> task<void> {
+            ctx.run(stop_source.get_token());
+            co_return;
+        }()));
+}
+
 TEST_CASE("tcp tx/rx test", "[g6::net::tcp]") {
     io::context ctx{};
     inplace_stop_source stop_source{};
@@ -41,8 +65,8 @@ TEST_CASE("tcp tx/rx test", "[g6::net::tcp]") {
                   [&]() -> task<void> {
                       ctx.run(stop_source.get_token());
                       co_return;
-                  }()) |
-              transform([](auto &&received, auto &&sent, ...) { REQUIRE(sent == received); }));
+                  }())
+              | transform([](auto &&received, auto &&sent, ...) { REQUIRE(sent == received); }));
 }
 
 TEST_CASE("tcp server/client test", "[g6::net::tcp]") {
@@ -69,8 +93,8 @@ TEST_CASE("tcp server/client test", "[g6::net::tcp]") {
                   [&]() -> task<void> {
                       ctx.run(stop_source.get_token());
                       co_return;
-                  }()) |
-              transform([](auto &&received, auto &&sent, ...) { REQUIRE(sent == received); }));
+                  }())
+              | transform([](auto &&received, auto &&sent, ...) { REQUIRE(sent == received); }));
 }
 
 TEST_CASE("tcp server/client coroless test", "[g6::net::tcp]") {
@@ -103,19 +127,21 @@ TEST_CASE("tcp server/client coroless test", "[g6::net::tcp]") {
                      }),
                  let(net::open_socket(ctx, net::tcp_client, *server.sock.local_endpoint()),
                      [&](auto &clt_socket) {
-                         return let(net::async_send(clt_socket, as_bytes(span{client.tx_data.data(), client.tx_data.size()})), [&](size_t bytes) {
-                             fmt::print("client sent {} bytes\n", bytes);
-                             return net::async_recv(clt_socket, as_writable_bytes(span{client.buffer, bytes})) |
-                                    transform([](size_t bytes) {
-                                        fmt::print("client received {} bytes\n", bytes);
-                                        return bytes;
-                                    });
-                         });
-                     })) |
-        transform([](auto server_res, auto client_res) {
-            size_t server_bytes = std::get<0>(std::get<0>(server_res));
-            size_t client_bytes = std::get<0>(std::get<0>(client_res));
-            fmt::print("result: {}/{}\n", client_bytes, server_bytes);
-            REQUIRE(client_bytes == server_bytes);
-        }));
+                         return let(
+                             net::async_send(clt_socket, as_bytes(span{client.tx_data.data(), client.tx_data.size()})),
+                             [&](size_t bytes) {
+                                 fmt::print("client sent {} bytes\n", bytes);
+                                 return net::async_recv(clt_socket, as_writable_bytes(span{client.buffer, bytes}))
+                                      | transform([](size_t bytes) {
+                                            fmt::print("client received {} bytes\n", bytes);
+                                            return bytes;
+                                        });
+                             });
+                     }))
+        | transform([](auto server_res, auto client_res) {
+              size_t server_bytes = std::get<0>(std::get<0>(server_res));
+              size_t client_bytes = std::get<0>(std::get<0>(client_res));
+              fmt::print("result: {}/{}\n", client_bytes, server_bytes);
+              REQUIRE(client_bytes == server_bytes);
+          }));
 }

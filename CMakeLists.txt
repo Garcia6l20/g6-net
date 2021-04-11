@@ -1,4 +1,13 @@
 cmake_minimum_required(VERSION 3.16)
+
+if (NOT G6_CMAKE)
+  include(FetchContent)
+  FetchContent_declare(g6-cmake-fetch
+    GIT_REPOSITORY https://github.com/Garcia6L20/g6-cmake.git
+    GIT_TAG main)
+  FetchContent_makeAvailable(g6-cmake-fetch)
+endif()
+
 project(g6-net
   LANGUAGES CXX
   VERSION 0.0.1
@@ -20,7 +29,7 @@ set(UNIFEX_BUILD_EXAMPLES ${G6_UNIFEX_DEVEL})
 add_subdirectory(external/libunifex)
 set(BUILD_TESTING ${_BUILD_TESTING})
 
-find_package(mbedtls)
+find_package(MbedTLS REQUIRED)
 find_package(fmt REQUIRED)
 find_package(spdlog REQUIRED)
 
@@ -42,15 +51,7 @@ add_library(${PROJECT_NAME}
   )
 add_library(g6::net ALIAS ${PROJECT_NAME})
 target_include_directories(${PROJECT_NAME} PUBLIC include)
-target_link_libraries(${PROJECT_NAME} PUBLIC unifex fmt::fmt spdlog::spdlog)
-
-if (mbedtls_FOUND)
-  target_link_libraries(${PROJECT_NAME} PUBLIC
-    mbed::tls
-    mbed::crypto
-    mbed::x509
-    )
-endif()
+target_link_libraries(${PROJECT_NAME} PUBLIC unifex fmt::fmt spdlog::spdlog MbedTLS::MbedTLS)
 
 option(G6_NO_IO_URING "Disable IO uring as default context" OFF)
 if (G6_NO_IO_URING)

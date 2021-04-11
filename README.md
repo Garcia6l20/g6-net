@@ -18,6 +18,11 @@ which provides extra functionalities (and supports inheritance).
 
 I'm planning to add support to `low_latency_iocp_context` soon.
 
+## Features
+
+  - Basic socket networking.
+  - SSL socket using [mbedtls](https://github.com/ARMmbed/mbedtls).
+
 ## Clone the project
 
 ```bash
@@ -31,4 +36,5 @@ mkdir build && cd build
 conan install --build=outdated ..
 cmake ..
 cmake --build .
+ctest --output-on-failure
 ```

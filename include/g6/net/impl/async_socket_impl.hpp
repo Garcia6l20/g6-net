@@ -32,7 +32,7 @@ namespace g6::net {
         public:
             // Produces number of bytes read.
             template<template<typename...> class Variant, template<typename...> class Tuple>
-            using value_types = Variant<Tuple<async_socket, net::ip_endpoint>>;
+            using value_types = Variant<Tuple<std::tuple<async_socket, net::ip_endpoint>>>;
 
             // Note: Only case it might complete with exception_ptr is if the
             // receiver's set_value() exits with an exception.
@@ -88,8 +88,8 @@ namespace g6::net {
 
             static constexpr bool sends_done = true;
 
-            explicit connect_sender(io::context &context, int fd, net::ip_endpoint endpoint) noexcept
-                : context_{context}, fd_{fd}, endpoint_{std::move(endpoint)} {}
+            explicit connect_sender(io::context &context, int fd, const net::ip_endpoint &endpoint) noexcept
+                : context_{context}, fd_{fd}, endpoint_{endpoint} {}
 
             template<typename Receiver>
             auto connect(Receiver &&r) && {
@@ -291,8 +291,8 @@ namespace g6::net {
         return detail::accept_sender{socket.context_, socket.fd_.get()};
     }
 
-    auto tag_invoke(tag_t<async_connect>, async_socket &socket, ip_endpoint &&endpoint) noexcept {
-        return detail::connect_sender{socket.context_, socket.fd_.get(), std::forward<ip_endpoint>(endpoint)};
+    auto tag_invoke(tag_t<async_connect>, async_socket &socket, const ip_endpoint &endpoint) noexcept {
+        return detail::connect_sender{socket.context_, socket.fd_.get(), endpoint};
     }
 
     auto tag_invoke(tag_t<async_connect>, auto &context, int fd, ip_endpoint const &endpoint) noexcept {

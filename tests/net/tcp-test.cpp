@@ -44,11 +44,13 @@ TEST_CASE("tcp tx/rx test", "[g6::net::tcp]") {
     io::context ctx{};
     inplace_stop_source stop_source{};
 
+    auto test_endpoint = *net::ip_endpoint::from_string("127.0.0.1:4242");
+
     sync_wait(when_all(
                   [&]() -> task<size_t> {
                       scope_guard _ = [&]() noexcept { stop_source.request_stop(); };
                       auto sock = net::open_socket(ctx, AF_INET, SOCK_STREAM);
-                      sock.bind(*net::ip_endpoint::from_string("127.0.0.1:4242"));
+                      sock.bind(test_endpoint);
                       sock.listen();
                       auto [client, client_address] = co_await net::async_accept(sock);
                       char buffer[1024]{};
@@ -57,7 +59,8 @@ TEST_CASE("tcp tx/rx test", "[g6::net::tcp]") {
                   }(),
                   [&]() -> task<size_t> {
                       auto sock = net::open_socket(ctx, AF_INET, SOCK_STREAM);
-                      co_await net::async_connect(sock, *net::ip_endpoint::from_string("127.0.0.1:4242"));
+
+                      co_await net::async_connect(sock, test_endpoint);
                       const char buffer[] = {"hello world !!!"};
                       auto sent = co_await net::async_send(sock, as_bytes(span{buffer}));
                       co_return sent;
@@ -118,7 +121,8 @@ TEST_CASE("tcp server/client coroless test", "[g6::net::tcp]") {
 
     sync_wait(
         when_all(let(net::async_accept(server.sock),
-                     [&server](auto &clt_sock, auto &endpoint) {
+                     [&server](auto &result) {
+                         auto &[clt_sock, endpoint] = result;
                          return let(net::async_recv(clt_sock, as_writable_bytes(span{server.buffer})),
                                     [&](size_t bytes) {
                                         fmt::print("server received {} bytes from {}\n", bytes, endpoint.to_string());

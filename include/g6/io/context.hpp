@@ -19,8 +19,10 @@
 #error "Cannot find suitable IO context"
 #endif
 
-#include <unifex/tag_invoke.hpp>
 #include <unifex/scheduler_concepts.hpp>
+#include <unifex/tag_invoke.hpp>
+
+#include <spdlog/spdlog.h>
 
 namespace g6 {
     using namespace unifex;
@@ -35,9 +37,9 @@ namespace g6 {
 
 #define G6_IO_SET_VALUE(__receiver, ...)                                                                               \
     if constexpr (noexcept(unifex::set_value(std::move(__receiver), __VA_ARGS__))) {                                   \
-        g6::set_value(std::move(__receiver), __VA_ARGS__);                                                         \
+        g6::set_value(std::move(__receiver), __VA_ARGS__);                                                             \
     } else {                                                                                                           \
-        UNIFEX_TRY { g6::set_value(std::move(__receiver), __VA_ARGS__); }                                          \
+        UNIFEX_TRY { g6::set_value(std::move(__receiver), __VA_ARGS__); }                                              \
         UNIFEX_CATCH(...) { unifex::set_error(std::move(__receiver), std::current_exception()); }                      \
     }
 
@@ -74,17 +76,14 @@ namespace g6::io {
         friend auto tag_invoke(tag_t<unifex::get_scheduler>, io::context &ctx) noexcept { return ctx.get_scheduler(); }
 
     public:
-        template <auto op_code, typename Receiver, template <class> typename Operation>
+        template<auto op_code, typename Receiver, template<class> typename Operation>
         struct io_operation_base : completion_base {
-            static constexpr bool is_stop_ever_possible =
-                !is_stop_never_possible_v<stop_token_type_t<Receiver>>;
+            static constexpr bool is_stop_ever_possible = !is_stop_never_possible_v<stop_token_type_t<Receiver>>;
 
             template<typename Sender>
-            explicit io_operation_base(Sender& sender, Receiver&& r) noexcept
-                : context_{sender.context_}
-                , fd_{sender.fd_}
-                , receiver_{(Receiver &&) r}
-                , can_be_cancelled_{get_stop_token(r).stop_possible()} {}
+            explicit io_operation_base(Sender &sender, Receiver &&r) noexcept
+                : context_{sender.context_}, fd_{sender.fd_}, receiver_{(Receiver &&) r},
+                  can_be_cancelled_{get_stop_token(r).stop_possible()} {}
 
             void start() noexcept {
                 if (!context_.is_running_on_io_thread()) {
@@ -95,13 +94,11 @@ namespace g6::io {
                 }
             }
 
-            static void on_schedule_complete(operation_base* op) noexcept {
-                static_cast<io_operation_base*>(op)->start_io();
+            static void on_schedule_complete(operation_base *op) noexcept {
+                static_cast<io_operation_base *>(op)->start_io();
             }
 
-            static auto& get_impl(operation_base* op) noexcept {
-                return *static_cast<Operation<Receiver>*>(op);
-            }
+            static auto &get_impl(operation_base *op) noexcept { return *static_cast<Operation<Receiver> *>(op); }
 
             void request_stop() noexcept {
                 stop_callback_.destruct();
@@ -112,22 +109,22 @@ namespace g6::io {
                 }
             }
 
-            enum class state {
-                none = 0, pending = 0b01, cancel_pending = 0b10
+            enum class state
+            {
+                none = 0,
+                pending = 0b01,
+                cancel_pending = 0b10
             };
             std::atomic<state> state_;
 
             struct cancel_callback {
-                io_operation_base& op_;
+                io_operation_base &op_;
 
-                void operator()() noexcept {
-                    op_.request_stop();
-                }
+                void operator()() noexcept { op_.request_stop(); }
             };
 
-            manual_lifetime<typename stop_token_type_t<
-                Receiver>::template callback_type<cancel_callback>>
-                stop_callback_;
+            manual_lifetime<typename stop_token_type_t<Receiver>::template callback_type<cancel_callback>>
+                stop_callback_{};
 
             bool can_be_cancelled_;
 
@@ -144,10 +141,10 @@ namespace g6::io {
                 }
             }
 
-            static void complete_with_done(operation_base* op) noexcept {
+            static void complete_with_done(operation_base *op) noexcept {
                 // Avoid instantiating set_done() if we're not going to call it.
                 if constexpr (is_stop_ever_possible) {
-                    auto& self = get_impl(op);
+                    auto &self = get_impl(op);
                     unifex::set_done(std::move(self).receiver_);
                 } else {
                     // This should never be called if stop is not possible.
@@ -156,46 +153,43 @@ namespace g6::io {
             }
 
             void request_stop_remote() noexcept {
-                auto oldState = this->state_.load(std::memory_order_acquire);
-                this->state_.store(
-                    state::cancel_pending,
-                    std::memory_order_release);
+                auto oldState = this->state_.load(std::memory_order_relaxed);
                 if (oldState == state::pending) {
                     // Timer had not yet elapsed.
                     // We are responsible for scheduling the completion of this timer
                     // operation.
-                    this->execute_ =
-                        &io_operation_base::cleanup_and_complete_with_done;
+                    this->execute_ = &io_operation_base::cleanup_and_complete_with_done;
                     this->context_.schedule_remote(this);
                 }
             }
 
-            static void cleanup_and_complete_with_done(
-                operation_base* op) noexcept {
+            static void cleanup_and_complete_with_done(operation_base *op) noexcept {
                 // Avoid instantiating set_done() if we're never going to call it.
                 if constexpr (is_stop_ever_possible) {
-                    auto& self = get_impl(op);
+                    auto &self = get_impl(op);
                     assert(self.context_.is_running_on_io_thread());
 
                     auto state = self.state_.load(std::memory_order_relaxed);
                     if (state == state::pending) {
                         // Timer not yet removed from the timers_ list. Do that now.
 
-                        auto populateSqe = [self=&self](io_uring_sqe& sqe) mutable noexcept {
-                          const auto [data, len, off] = self->get_io_data();
+                        auto populateSqe = [self = &self](io_uring_sqe &sqe) mutable noexcept {
+                            const auto [data, len, off] = self->get_io_data();
 
-                          sqe.opcode = IORING_OP_ASYNC_CANCEL;
-                          sqe.flags = 0;
-                          sqe.ioprio = 0;
-                          sqe.fd = -1;
-                          sqe.off = 0;
-                          sqe.addr = reinterpret_cast<std::uintptr_t>(data);
-                          sqe.len = 0;
-                          sqe.cancel_flags = 0;
+                            sqe.opcode = IORING_OP_ASYNC_CANCEL;
+                            sqe.flags = 0;
+                            sqe.ioprio = 0;
+                            sqe.fd = -1;
+                            sqe.off = 0;
+                            sqe.addr = reinterpret_cast<std::uintptr_t>(data);
+                            sqe.len = 0;
+                            sqe.cancel_flags = 0;
 
-                          sqe.user_data = reinterpret_cast<std::uintptr_t>(
-                              static_cast<io_operation_base*>(self));
-                          self->execute_ = &io_operation_base::complete_with_done;
+                            spdlog::info("cancel pending...");
+                            self->state_.store(state::cancel_pending, std::memory_order_acq_rel);
+
+                            sqe.user_data = reinterpret_cast<std::uintptr_t>(static_cast<io_operation_base *>(self));
+                            self->execute_ = &io_operation_base::complete_with_done;
                         };
 
                         if (!self.context_.try_submit_io(populateSqe)) {
@@ -211,34 +205,30 @@ namespace g6::io {
                 }
             }
 
-            auto& get_impl() noexcept { return get_impl(this); }
+            auto &get_impl() noexcept { return get_impl(this); }
 
             void start_io() noexcept {
                 assert(context_.is_running_on_io_thread());
-                auto populateSqe = [this](io_uring_sqe& sqe) noexcept {
-                  const auto [data, len, off] = get_impl().get_io_data();
+                auto populateSqe = [this](io_uring_sqe &sqe) noexcept {
+                    const auto [data, len, off] = get_impl().get_io_data();
 
-                  sqe.opcode = op_code;
-                  sqe.flags = 0;
-                  sqe.ioprio = 0;
-                  sqe.fd = fd_;
-                  sqe.off = off;
-                  sqe.addr = reinterpret_cast<std::uintptr_t>(data);
-                  sqe.len = len;
-                  sqe.rw_flags = 0;
+                    sqe.opcode = op_code;
+                    sqe.flags = 0;
+                    sqe.ioprio = 0;
+                    sqe.fd = fd_;
+                    sqe.off = off;
+                    sqe.addr = reinterpret_cast<std::uintptr_t>(data);
+                    sqe.len = len;
+                    sqe.rw_flags = 0;
 
-                  sqe.user_data = reinterpret_cast<std::uintptr_t>(
-                      static_cast<io_operation_base*>(this));
-                  this->execute_ = &io_operation_base::on_operation_complete;
+                    sqe.user_data = reinterpret_cast<std::uintptr_t>(static_cast<io_operation_base *>(this));
+                    this->execute_ = &io_operation_base::on_operation_complete;
 
-                  this->state_.store(
-                      state::pending,
-                      std::memory_order_acq_rel);
+                    this->state_.store(state::pending, std::memory_order_acq_rel);
 
-                  if constexpr (is_stop_ever_possible) {
-                      stop_callback_.construct(
-                          get_stop_token(receiver_), cancel_callback{*this});
-                  }
+                    if constexpr (is_stop_ever_possible) {
+                        stop_callback_.construct(get_stop_token(receiver_), cancel_callback{*this});
+                    }
                 };
 
                 if (!context_.try_submit_io(populateSqe)) {
@@ -248,46 +238,39 @@ namespace g6::io {
             }
 
             const struct set_result_ {
-                template<typename ...Ts>
-                void operator()(Ts&&...result) const noexcept {
-                    if constexpr (noexcept(unifex::set_value(
-                        std::move(receiver_),
-                        std::forward<decltype(result)>(result)...))) {
-                        unifex::set_value(
-                            std::move(receiver_), std::forward<decltype(result)>(result)...);
+                template<typename... Ts>
+                void operator()(Ts &&...result) const noexcept {
+                    if constexpr (noexcept(unifex::set_value(std::move(receiver_),
+                                                             std::forward<decltype(result)>(result)...))) {
+                        unifex::set_value(std::move(receiver_), std::forward<decltype(result)>(result)...);
                     } else {
                         UNIFEX_TRY {
-                            unifex::set_value(
-                                std::move(receiver_), std::forward<decltype(result)>(result)...);
+                            unifex::set_value(std::move(receiver_), std::forward<decltype(result)>(result)...);
                         }
-                        UNIFEX_CATCH(...) {
-                            unifex::set_error(
-                                std::move(receiver_), std::current_exception());
-                        }
+                        UNIFEX_CATCH(...) { unifex::set_error(std::move(receiver_), std::current_exception()); }
                     }
                 }
-                template<typename...Ts>
-                void operator()(std::tuple<Ts...> &&result) const noexcept {
-                    std::apply(*this, std::forward<decltype(result)>(result));
-                }
+//                template<typename... Ts>
+//                void operator()(std::tuple<Ts...> &&result) const noexcept {
+//                    std::apply(*this, std::forward<decltype(result)>(result));
+//                }
                 Receiver &receiver_;
             } set_result{receiver_};
 
-            static void on_operation_complete(operation_base* op) noexcept {
-                auto& self = get_impl(op);
+            static void on_operation_complete(operation_base *op) noexcept {
+                auto &self = get_impl(op);
                 self.stop_callback_.destruct();
                 if (self.result_ >= 0) {
                     self.set_result(self.get_result());
                 } else if (self.result_ == -ECANCELED) {
                     unifex::set_done(std::move(self.receiver_));
                 } else {
-                    unifex::set_error(
-                        std::move(self.receiver_),
-                        std::error_code{-self.result_, std::system_category()});
+                    unifex::set_error(std::move(self.receiver_),
+                                      std::error_code{-self.result_, std::system_category()});
                 }
             }
 
-            context& context_;
+            context &context_;
             int fd_;
             Receiver receiver_;
         };

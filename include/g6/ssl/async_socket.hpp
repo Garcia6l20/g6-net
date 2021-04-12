@@ -206,7 +206,7 @@ namespace g6::ssl {
                                             ssl::private_key const &);
 
         friend auto tag_invoke(tag_t<net::async_accept>, ssl::async_socket &socket);
-
+        friend auto tag_invoke(tag_t<net::async_connect>, ssl::async_socket &socket, const net::ip_endpoint &endpoint);
 
         friend ssl::async_socket tag_invoke(tag_t<net::open_socket>, auto &ctx, ssl::detail::tags::tcp_client);
 
@@ -266,8 +266,6 @@ namespace g6::ssl {
                 throw std::system_error(result, ssl::error_category, "mbedtls_ssl_handshake");
             } else {
                 encrypted_ = true;
-                //                if (mode_ == connection_mode::client) close_send();
-                //else close_send();
                 return {just(result), nullptr};
             }
         }
@@ -276,17 +274,13 @@ namespace g6::ssl {
         static constexpr auto discard = transform(sink);
 
         auto handshake() {
-            return sequence(//lazy([]() { fmt::print("starting handshake !\n"); }),
-                            //                            defer([this] { return discard(handshake_step()); })//
-                            defer([this] {
-                                auto [sender, dest_bytes] = handshake_step();
-                                return transform(std::move(sender), [dest_bytes = dest_bytes](size_t bytes) {
-                                    if (dest_bytes) *dest_bytes = bytes;
-                                });
-                            })//
-                                | repeat_effect_until([&]() { return encrypted_; })
-                    //, lazy([&] { printf("handshake terminated !\n"); })
-                );
+            return defer([this] {
+                       auto [sender, dest_bytes] = handshake_step();
+                       return transform(std::move(sender), [dest_bytes = dest_bytes](size_t bytes) {
+                           if (dest_bytes) *dest_bytes = bytes;
+                       });
+                   })
+                 | repeat_effect_until([&]() { return encrypted_; });
         }
 
         /** @brief Send data.
@@ -315,11 +309,10 @@ namespace g6::ssl {
                     return just(result);
                 }
             };
-            return sequence(defer([this, step] {
-                                return transform(step(), [this](size_t bytes) { to_send_.actual_len = bytes; });
-                            })                                                                //
-                            | repeat_effect_until([offset, size]() { return *offset >= size; })//
-                            | transform_done([] { return just(); }))
+            return defer([this, step] {
+                       return transform(step(), [this](size_t bytes) { to_send_.actual_len = bytes; });
+                   })                                                               //
+                 | repeat_effect_until([offset, size]() { return *offset >= size; })//
                  | transform([this, offset]() {
                        to_send_ = {};
                        return *offset;
@@ -344,17 +337,14 @@ namespace g6::ssl {
                     return just(*result);
                 }
             };
-            return sequence(defer([this, step] {
-                                return transform(step(), [this](size_t bytes) { to_receive_.actual_len = bytes; });
-                            })                                                        //
-                            | repeat_effect_until([result]() {
-                                  return *result >= 0;
-                              })//
-                            | transform_done([this] {
-                                  to_receive_ = {};
-                                  return just();
-                              }))
-                 | transform([result]() { return *result; });
+            return defer([this, step] {
+                       return transform(step(), [this](size_t bytes) { to_receive_.actual_len = bytes; });
+                   })                                                      //
+                 | repeat_effect_until([result]() { return *result >= 0; })//
+                 | transform([this, result] {
+                       to_receive_ = {};
+                       return *result;
+                   });
         }
 
         connection_mode mode_;
@@ -372,7 +362,6 @@ namespace g6::ssl {
     public:
         /// @cond
         // move ctor (must update callbacks)
-        //        async_socket(async_socket &&other) = delete;
         async_socket(async_socket &&other) noexcept
             : mode_{other.mode_}, certificate_{std::move(other.certificate_)}, key_{std::move(other.key_)},
               ssl_context_{std::move(other.ssl_context_)}, ssl_config_{std::move(other.ssl_config_)},
@@ -395,9 +384,7 @@ namespace g6::ssl {
             mbedtls_ssl_conf_authmode(ssl_config_.get(), int(mode));
         }
 
-        auto get_peer_verify_mode() const noexcept {
-            return verify_mode_;
-        }
+        auto get_peer_verify_mode() const noexcept { return verify_mode_; }
 
         void set_verify_flags(ssl::verify_flags flags) noexcept { verify_flags_ = verify_flags_ | flags; }
         void unset_verify_flags(ssl::verify_flags flags) noexcept { verify_flags_ = verify_flags_ & flags; }
@@ -413,9 +400,7 @@ namespace g6::ssl {
             mbedtls_ssl_set_hostname(ssl_context_.get(), hostname_.data());
         }
 
-        auto const& host_name() const noexcept {
-            return hostname_;
-        }
+        auto const &host_name() const noexcept { return hostname_; }
     };
 
 }// namespace g6::ssl

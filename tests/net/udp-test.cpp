@@ -42,6 +42,36 @@ TEST_CASE("udp tx/rx test", "[g6::net::udp]") {
                   }()) |
               transform([](auto &&sent, auto &&received, ...) { REQUIRE(sent == received); }));
 }
+
+TEST_CASE("udp has_pending_data test", "[g6::net::udp]") {
+    io::context ctx{};
+    inplace_stop_source stop_source{};
+    auto sched = ctx.get_scheduler();
+
+    using namespace std::chrono_literals;
+
+    sync_wait(when_all(
+        [&]() -> task<void> {
+          scope_guard _ = [&]() noexcept { stop_source.request_stop(); };
+          auto sock = net::open_socket(ctx, AF_INET, SOCK_DGRAM);
+          std::array<std::byte, 64> buffer{};
+          sock.bind(*net::ip_endpoint::from_string("127.0.0.1:4242"));
+          REQUIRE_FALSE(net::has_pending_data(sock));
+          co_await schedule_at(sched, now(sched) + 10ms);
+          REQUIRE(net::has_pending_data(sock));
+        }(),
+        [&]() -> task<void> {
+          auto sock = net::open_socket(ctx, AF_INET, SOCK_DGRAM);
+          const char buffer[] = {"hello world !!!"};
+          auto bytes_sent = co_await g6::net::async_send_to(
+              sock, as_bytes(span{buffer}), *g6::net::ip_endpoint::from_string("127.0.0.1:4242"));
+        }(),
+        [&]() -> task<void> {
+          ctx.run(stop_source.get_token());
+          co_return;
+        }()));
+}
+
 //
 //TEST_CASE("udp tx/rx coroless test", "[g6::net::udp]") {
 //

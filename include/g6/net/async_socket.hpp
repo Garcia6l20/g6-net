@@ -89,6 +89,8 @@ namespace g6::net {
 
         friend auto tag_invoke(tag_t<async_recv_from>, async_socket &socket, span<std::byte> buffer) noexcept;
 
+        friend auto tag_invoke(tag_t<has_pending_data>, async_socket &socket) noexcept;
+
     protected:
         safe_file_descriptor fd_;
         io::context &context_;

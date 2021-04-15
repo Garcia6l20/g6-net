@@ -1,6 +1,7 @@
 #pragma once
 
 #include <g6/net/async_socket.hpp>
+#include <sys/ioctl.h>
 #include <unifex/exception.hpp>
 
 namespace g6::net {
@@ -294,6 +295,10 @@ namespace g6::net {
         return detail::connect_sender{socket.context_, socket.fd_.get(), endpoint};
     }
 
+    auto tag_invoke(tag_t<async_connect>, async_socket &socket, ip_endpoint &&endpoint) noexcept {
+        return detail::connect_sender{socket.context_, socket.fd_.get(), std::forward<ip_endpoint>(endpoint)};
+    }
+
     auto tag_invoke(tag_t<async_connect>, auto &context, int fd, ip_endpoint const &endpoint) noexcept {
         return detail::connect_sender{context, fd, endpoint};
     }
@@ -313,6 +318,12 @@ namespace g6::net {
 
     auto tag_invoke(tag_t<async_recv_from>, async_socket &socket, span<std::byte> buffer) noexcept {
         return detail::recv_from_sender{socket.context_, socket.fd_.get(), buffer};
+    }
+
+    auto tag_invoke(tag_t<has_pending_data>, async_socket &socket) noexcept {
+        int count = 0;
+        ioctl(socket.fd_.get(), FIONREAD, &count);
+        return count > 0;
     }
 }// namespace g6::net
 

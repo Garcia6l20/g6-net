@@ -1,5 +1,4 @@
-#ifndef G6_NET_ASYNC_SOCKET_HPP_
-#define G6_NET_ASYNC_SOCKET_HPP_
+#pragma once
 
 #include <g6/net/net_cpo.hpp>
 
@@ -90,10 +89,6 @@ namespace g6::net {
 
         friend auto tag_invoke(tag_t<async_recv_from>, async_socket &socket, span<std::byte> buffer) noexcept;
 
-        template<class IOContext2>
-        friend auto tag_invoke(unifex::tag_t<open_socket>, IOContext2 &ctx, detail::tags::tcp_client const &,
-                               ip_endpoint const &endpoint);
-
     protected:
         safe_file_descriptor fd_;
         io::context &context_;
@@ -106,5 +101,3 @@ namespace g6::io {
 }// namespace g6::io
 
 #include <g6/net/impl/async_socket_impl.hpp>
-
-#endif// G6_NET_ASYNC_SOCKET_HPP_

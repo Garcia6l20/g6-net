@@ -1,5 +1,4 @@
-#ifndef G6_NET_IMPL_ASYNC_SOCKET_HPP_
-#define G6_NET_IMPL_ASYNC_SOCKET_HPP_
+#pragma once
 
 #include <g6/net/async_socket.hpp>
 #include <unifex/exception.hpp>
@@ -326,6 +325,19 @@ namespace g6::io {
         }
         return net::async_socket{ctx, result};
     }
-}// namespace g6::io
 
-#endif// G6_NET_IMPL_ASYNC_SOCKET_HPP_
+    template<class IOContext2>
+    auto tag_invoke(unifex::tag_t<net::open_socket>, IOContext2 &ctx, net::detail::tags::tcp_server const &,
+                    const net::ip_endpoint &endpoint) {
+        auto sock = net::open_socket(ctx, AF_INET, SOCK_STREAM);
+        sock.bind(endpoint);
+        sock.listen();
+        return sock;
+    }
+
+    template<class IOContext2>
+    auto tag_invoke(unifex::tag_t<net::open_socket>, IOContext2 &ctx, net::detail::tags::tcp_client const &) {
+        return net::open_socket(ctx, AF_INET, SOCK_STREAM);
+    }
+
+}// namespace g6::net

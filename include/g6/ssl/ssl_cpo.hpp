@@ -4,6 +4,6 @@
 
 namespace g6::ssl {
 
-    G6_CPO_DEF(async_encrypt, _ssl_cpo)
+    G6_CPO_DEF(async_encrypt)
 
 }// namespace g6::ssl

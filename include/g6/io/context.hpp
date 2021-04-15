@@ -220,8 +220,9 @@ namespace g6::io {
                     sqe.addr = reinterpret_cast<std::uintptr_t>(data);
                     sqe.len = len;
                     sqe.rw_flags = 0;
-
                     sqe.user_data = reinterpret_cast<std::uintptr_t>(static_cast<io_operation_base *>(this));
+                    sqe.__pad2[0] = sqe.__pad2[1] = sqe.__pad2[2] = 0;
+
                     this->execute_ = &io_operation_base::on_operation_complete;
 
                     this->state_.store(state::pending, std::memory_order_acq_rel);

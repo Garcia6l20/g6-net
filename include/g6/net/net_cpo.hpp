@@ -5,15 +5,15 @@
 
 namespace g6::net {
 
-    G6_CPO_DEF(open_socket, _net_cpo)
-    G6_CPO_DEF(async_accept, _net_cpo)
-    G6_CPO_DEF(async_connect, _net_cpo)
-    G6_CPO_DEF(async_send, _net_cpo)
-    G6_CPO_DEF(async_send_to, _net_cpo)
-    G6_CPO_DEF(async_recv, _net_cpo)
-    G6_CPO_DEF(async_recv_from, _net_cpo)
+    G6_CPO_DEF(open_socket)
+    G6_CPO_DEF(async_accept)
+    G6_CPO_DEF(async_connect)
+    G6_CPO_DEF(async_send)
+    G6_CPO_DEF(async_send_to)
+    G6_CPO_DEF(async_recv)
+    G6_CPO_DEF(async_recv_from)
 
-    G6_CPO_DEF(make_server, _net_cpo)
+    G6_CPO_DEF(has_pending_data)
 
 }// namespace g6::net
 

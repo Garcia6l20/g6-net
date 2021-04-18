@@ -35,6 +35,11 @@ namespace g6::net {
         async_socket(async_socket const &) = delete;
         ~async_socket() = default;
 
+        bool operator==(async_socket const& other) const noexcept {
+            return other.fd_.get() == fd_.get();
+        }
+        constexpr auto operator<=>(async_socket const&) const noexcept = default;
+
         void bind(g6::net::ip_endpoint const &endpoint) {
             sockaddr_storage storage{};
             auto size = endpoint.to_sockaddr(storage);

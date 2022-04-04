@@ -18,12 +18,12 @@ AlwaysBreakTemplateDeclarations: Yes
 BreakBeforeBraces: Custom
 BraceWrapping:
   AfterCaseLabel: false
-  AfterClass: true
+  AfterClass: false
   AfterControlStatement: Never
-  AfterEnum: true
+  AfterEnum: false
   AfterFunction: false
   AfterNamespace: false
-  AfterUnion: true
+  AfterUnion: false
   BeforeCatch: false
   BeforeElse: false
   IndentBraces: false

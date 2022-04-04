@@ -1,13 +1,5 @@
 #include <catch2/catch.hpp>
 
-#include <unifex/just.hpp>
-#include <unifex/let.hpp>
-#include <unifex/let_with.hpp>
-#include <unifex/sync_wait.hpp>
-#include <unifex/task.hpp>
-#include <unifex/when_all.hpp>
-#include <unifex/transform.hpp>
-
 #include <fmt/format.h>
 
 #include <g6/io/context.hpp>
@@ -24,7 +16,7 @@ TEST_CASE("tcp stop server test", "[g6::net::tcp]") {
 
     sync_wait(when_all(
         [&]() -> task<void> {
-            auto _ = scope_guard{[&]() noexcept {  }};
+            auto _ = scope_guard{[&]() noexcept {}};
             auto sock = net::open_socket(ctx, AF_INET, SOCK_STREAM);
             sock.bind(*net::ip_endpoint::from_string("127.0.0.1:0"));
             sock.listen();
@@ -82,8 +74,7 @@ TEST_CASE("tcp server/client test", "[g6::net::tcp]") {
     sync_wait(when_all(
                   [&]() -> task<size_t> {
                       scope_guard _ = [&]() noexcept { stop_source.request_stop(); };
-                      auto server =
-                          net::open_socket(ctx, net::tcp_server, test_endpoint);
+                      auto server = net::open_socket(ctx, net::tcp_server, test_endpoint);
                       auto [client, client_address] = co_await net::async_accept(server);
                       char buffer[1024]{};
                       auto byte_count = co_await net::async_recv(client, as_writable_bytes(span{buffer}));
@@ -125,30 +116,30 @@ TEST_CASE("tcp server/client coroless test", "[g6::net::tcp]") {
     } client;
 
     sync_wait(
-        when_all(let(net::async_accept(server.sock),
-                     [&server](auto &result) {
-                         auto &[clt_sock, endpoint] = result;
-                         return let(net::async_recv(clt_sock, as_writable_bytes(span{server.buffer})),
-                                    [&](size_t bytes) {
-                                        fmt::print("server received {} bytes from {}\n", bytes, endpoint.to_string());
-                                        return net::async_send(clt_sock, as_bytes(span{server.buffer, bytes}));
-                                    });
-                     }),
-                 let_with([&] { return net::open_socket(ctx, net::tcp_client); },
-                    [&](auto &sock) {
-                    return let(net::async_connect(sock, server_endpoint),
-                     [&](int) {
-                         return let(
-                             net::async_send(sock, as_bytes(span{client.tx_data.data(), client.tx_data.size()})),
-                             [&](size_t bytes) {
-                                 fmt::print("client sent {} bytes\n", bytes);
-                                 return net::async_recv(sock, as_writable_bytes(span{client.buffer, bytes}))
-                                      | transform([](size_t bytes) {
-                                            fmt::print("client received {} bytes\n", bytes);
-                                            return bytes;
-                                        });
-                             });
-                     });}))
+        when_all(
+            let(net::async_accept(server.sock),
+                [&server](auto &result) {
+                    auto &[clt_sock, endpoint] = result;
+                    return let(net::async_recv(clt_sock, as_writable_bytes(span{server.buffer})), [&](size_t bytes) {
+                        fmt::print("server received {} bytes from {}\n", bytes, endpoint.to_string());
+                        return net::async_send(clt_sock, as_bytes(span{server.buffer, bytes}));
+                    });
+                }),
+            let_with([&] { return net::open_socket(ctx, net::tcp_client); },
+                     [&](auto &sock) {
+                         return let(net::async_connect(sock, server_endpoint), [&](int) {
+                             return let(
+                                 net::async_send(sock, as_bytes(span{client.tx_data.data(), client.tx_data.size()})),
+                                 [&](size_t bytes) {
+                                     fmt::print("client sent {} bytes\n", bytes);
+                                     return net::async_recv(sock, as_writable_bytes(span{client.buffer, bytes}))
+                                          | transform([](size_t bytes) {
+                                                fmt::print("client received {} bytes\n", bytes);
+                                                return bytes;
+                                            });
+                                 });
+                         });
+                     }))
         | transform([](auto server_res, auto client_res) {
               size_t server_bytes = std::get<0>(std::get<0>(server_res));
               size_t client_bytes = std::get<0>(std::get<0>(client_res));

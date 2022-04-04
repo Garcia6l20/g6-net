@@ -1,15 +1,15 @@
 #pragma once
 
+#include <g6/tag_invoke.hpp>
 #include <utility>
-#include <unifex/tag_invoke.hpp>
+
 
 namespace g6::_generic_cpo {
     template<typename Concrete>
     struct generic_cpo {
         template<typename... Args>
-        auto operator()(Args &&...args) const noexcept(unifex::is_nothrow_tag_invocable_v<Concrete, Args...>)
-            -> unifex::tag_invoke_result_t<Concrete, Args...> {
-            return unifex::tag_invoke(*static_cast<Concrete const *>(this), std::forward<Args>(args)...);
+        auto operator()(Args &&...args) const noexcept(g6::nothrow_tag_invocable_c<Concrete, Args...>) {
+            return g6::tag_invoke(*static_cast<Concrete *>(this), std::forward<Args>(args)...);
         }
     };
 }// namespace g6::_generic_cpo

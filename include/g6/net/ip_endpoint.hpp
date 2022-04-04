@@ -4,30 +4,32 @@
 ///////////////////////////////////////////////////////////////////////////////
 #pragma once
 
+#include <g6/config.hpp>
+
+#if G6_OS_WINDOWS
+#include <WinSock2.h>
+#include <ws2ipdef.h>
+#else
+#include <netinet/in.h>
+#include <sys/socket.h>
+#endif
+
 #include <g6/net/ip_address.hpp>
 #include <g6/net/ipv4_endpoint.hpp>
 #include <g6/net/ipv6_endpoint.hpp>
 
 #include <cassert>
+#include <cinttypes>
 #include <optional>
 #include <string>
-#include <cinttypes>
 #include <type_traits>
+
 
 #include <cstring>
 
-#if defined(_MSC_VER)
-#include <WinSock2.h>
-#include <ws2ipdef.h>
-#else
-#include <sys/socket.h>
-#include <netinet/in.h>
-#endif
-
 
 namespace g6::net {
-    class ip_endpoint
-    {
+    class ip_endpoint {
     public:
         // Constructs to IPv4 end-point 0.0.0.0:0
         ip_endpoint() noexcept;
@@ -46,8 +48,7 @@ namespace g6::net {
 
         [[nodiscard]] std::string to_string() const;
 
-        static std::optional<ip_endpoint>
-        from_string(std::string_view string) noexcept;
+        static std::optional<ip_endpoint> from_string(std::string_view string) noexcept;
 
         bool operator==(const ip_endpoint &rhs) const noexcept;
         bool operator!=(const ip_endpoint &rhs) const noexcept;
@@ -58,8 +59,7 @@ namespace g6::net {
         bool operator<=(const ip_endpoint &rhs) const noexcept;
         bool operator>=(const ip_endpoint &rhs) const noexcept;
 
-        static ip_endpoint
-        from_sockaddr(const sockaddr &address) noexcept {
+        static ip_endpoint from_sockaddr(const sockaddr &address) noexcept {
             if (address.sa_family == AF_INET) {
                 sockaddr_in ipv4Address{};
                 std::memcpy(&ipv4Address, &address, sizeof(ipv4Address));
@@ -67,22 +67,18 @@ namespace g6::net {
                 std::uint8_t addressBytes[4];
                 std::memcpy(addressBytes, &ipv4Address.sin_addr, 4);
 
-                return ipv4_endpoint{
-                    ipv4_address{addressBytes},
-                    ntohs(ipv4Address.sin_port)};
+                return ipv4_endpoint{ipv4_address{addressBytes}, ntohs(ipv4Address.sin_port)};
             } else {
                 assert(address.sa_family == AF_INET6);
 
                 sockaddr_in6 ipv6Address{};
                 std::memcpy(&ipv6Address, &address, sizeof(ipv6Address));
 
-                return ipv6_endpoint{
-                    ipv6_address{ipv6Address.sin6_addr.s6_addr},
-                    ntohs(ipv6Address.sin6_port)};
+                return ipv6_endpoint{ipv6_address{ipv6Address.sin6_addr.s6_addr}, ntohs(ipv6Address.sin6_port)};
             }
         }
 
-        int to_sockaddr(sockaddr_storage& address) const noexcept {
+        int to_sockaddr(sockaddr_storage &address) const noexcept {
             if (is_ipv4()) {
                 const auto &ipv4EndPoint = to_ipv4();
 
@@ -112,30 +108,21 @@ namespace g6::net {
         }
 
     private:
-        enum class family
-        {
-            ipv4,
-            ipv6
-        };
+        enum class family { ipv4, ipv6 };
 
         family m_family;
 
-        union
-        {
+        union {
             ipv4_endpoint m_ipv4;
             ipv6_endpoint m_ipv6;
         };
     };
 
-    inline ip_endpoint::ip_endpoint() noexcept
-        : m_family(family::ipv4), m_ipv4() {}
+    inline ip_endpoint::ip_endpoint() noexcept : m_family(family::ipv4), m_ipv4() {}
 
-    inline ip_endpoint::ip_endpoint(ipv4_endpoint endpoint) noexcept
-        : m_family(family::ipv4), m_ipv4(endpoint) {}
+    inline ip_endpoint::ip_endpoint(ipv4_endpoint endpoint) noexcept : m_family(family::ipv4), m_ipv4(endpoint) {}
 
-    inline ip_endpoint::ip_endpoint(ipv6_endpoint endpoint) noexcept
-        : m_family(family::ipv6), m_ipv6(endpoint) {
-    }
+    inline ip_endpoint::ip_endpoint(ipv6_endpoint endpoint) noexcept : m_family(family::ipv6), m_ipv6(endpoint) {}
 
     inline const ipv4_endpoint &ip_endpoint::to_ipv4() const {
         assert(is_ipv4());
@@ -155,9 +142,7 @@ namespace g6::net {
         }
     }
 
-    inline std::uint16_t ip_endpoint::port() const noexcept {
-        return is_ipv4() ? m_ipv4.port() : m_ipv6.port();
-    }
+    inline std::uint16_t ip_endpoint::port() const noexcept { return is_ipv4() ? m_ipv4.port() : m_ipv6.port(); }
 
     inline bool ip_endpoint::operator==(const ip_endpoint &rhs) const noexcept {
         if (is_ipv4()) {
@@ -167,9 +152,7 @@ namespace g6::net {
         }
     }
 
-    inline bool ip_endpoint::operator!=(const ip_endpoint &rhs) const noexcept {
-        return !(*this == rhs);
-    }
+    inline bool ip_endpoint::operator!=(const ip_endpoint &rhs) const noexcept { return !(*this == rhs); }
 
     inline bool ip_endpoint::operator<(const ip_endpoint &rhs) const noexcept {
         if (is_ipv4()) {
@@ -179,15 +162,9 @@ namespace g6::net {
         }
     }
 
-    inline bool ip_endpoint::operator>(const ip_endpoint &rhs) const noexcept {
-        return rhs < *this;
-    }
+    inline bool ip_endpoint::operator>(const ip_endpoint &rhs) const noexcept { return rhs < *this; }
 
-    inline bool ip_endpoint::operator<=(const ip_endpoint &rhs) const noexcept {
-        return !(rhs < *this);
-    }
+    inline bool ip_endpoint::operator<=(const ip_endpoint &rhs) const noexcept { return !(rhs < *this); }
 
-    inline bool ip_endpoint::operator>=(const ip_endpoint &rhs) const noexcept {
-        return !(*this < rhs);
-    }
+    inline bool ip_endpoint::operator>=(const ip_endpoint &rhs) const noexcept { return !(*this < rhs); }
 }// namespace g6::net

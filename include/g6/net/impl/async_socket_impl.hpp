@@ -1,13 +1,19 @@
 #pragma once
 
 #include <g6/net/async_socket.hpp>
+
+#include <g6/io/config.hpp>
+
+#if G6_OS_WINDOWS
+#else
 #include <sys/ioctl.h>
-#include <unifex/exception.hpp>
+#endif
 
 namespace g6::net {
     namespace detail {
-        class accept_sender
-        {
+
+#if G6_IO_USE_IO_URING_CONTEXT
+        class accept_sender {
             template<typename Receiver>
             struct operation : io::context::io_operation_base<IORING_OP_ACCEPT, Receiver, operation> {
                 friend io::context;
@@ -53,8 +59,7 @@ namespace g6::net {
             int fd_;
         };
 
-        class connect_sender
-        {
+        class connect_sender {
             template<typename Receiver>
             struct operation : io::context::io_operation_base<IORING_OP_CONNECT, Receiver, operation> {
 
@@ -102,8 +107,7 @@ namespace g6::net {
             net::ip_endpoint endpoint_;
         };
 
-        class recv_sender
-        {
+        class recv_sender {
             template<typename Receiver>
             struct operation : io::context::io_operation_base<IORING_OP_RECV, Receiver, operation> {
                 friend io::context;
@@ -144,8 +148,7 @@ namespace g6::net {
             span<std::byte> buffer_;
         };
 
-        class recv_from_sender
-        {
+        class recv_from_sender {
             template<typename Receiver>
             struct operation : io::context::io_operation_base<IORING_OP_RECVMSG, Receiver, operation> {
                 friend io::context;
@@ -194,8 +197,7 @@ namespace g6::net {
             span<const std::byte> buffer_;
         };
 
-        class send_sender
-        {
+        class send_sender {
             template<typename Receiver>
             struct operation : io::context::io_operation_base<IORING_OP_SEND, Receiver, operation> {
                 friend io::context;
@@ -236,8 +238,7 @@ namespace g6::net {
             span<const std::byte> buffer_;
         };
 
-        class send_to_sender
-        {
+        class send_to_sender {
             template<typename Receiver>
             struct operation : io::context::io_operation_base<IORING_OP_SENDMSG, Receiver, operation> {
                 friend io::context;
@@ -284,61 +285,86 @@ namespace g6::net {
             span<const std::byte> buffer_;
             net::ip_endpoint to_;
         };
+#elif G6_IO_USE_EPOLL_CONTEXT
+#error "not implemented"
+#else// G6_IO_USE_IOCP_CONTEXT
 
+        class send_to_sender : operation_base {
+        public:
+            // Produces number of bytes read.
+            template<template<typename...> class Variant, template<typename...> class Tuple>
+            using value_types = Variant<Tuple<size_t>>;
+
+            // Note: Only case it might complete with exception_ptr is if the
+            // receiver's set_value() exits with an exception.
+            template<template<typename...> class Variant>
+            using error_types = Variant<std::error_code, std::exception_ptr>;
+
+            static constexpr bool sends_done = true;
+
+            explicit send_to_sender(io::context &context, SOCKET fd, const net::ip_endpoint &endpoint,
+                                    std::span<const std::byte> buffer) noexcept
+                : context_{context}, fd_{fd}, buffer_{buffer}, to_{endpoint} {}
+
+        private:
+            io::context &context_;
+            SOCKET fd_;
+            std::span<const std::byte> buffer_;
+            net::ip_endpoint to_;
+        };
+#endif
     }// namespace detail
 
-    auto tag_invoke(tag_t<async_accept>, async_socket &socket) noexcept {
-        return detail::accept_sender{socket.context_, socket.fd_.get()};
-    }
+    // auto tag_invoke(tag<async_accept>, async_socket &socket) noexcept {
+    //     return detail::accept_sender{socket.context_, socket.fd_.get()};
+    // }
 
-    auto tag_invoke(tag_t<async_connect>, async_socket &socket, const ip_endpoint &endpoint) noexcept {
-        return detail::connect_sender{socket.context_, socket.fd_.get(), endpoint};
-    }
+    // auto tag_invoke(tag<async_connect>, async_socket &socket, const ip_endpoint &endpoint) noexcept {
+    //     return detail::connect_sender{socket.context_, socket.fd_.get(), endpoint};
+    // }
 
-    auto tag_invoke(tag_t<async_connect>, async_socket &socket, ip_endpoint &&endpoint) noexcept {
-        return detail::connect_sender{socket.context_, socket.fd_.get(), std::forward<ip_endpoint>(endpoint)};
-    }
+    // auto tag_invoke(tag<async_connect>, async_socket &socket, ip_endpoint &&endpoint) noexcept {
+    //     return detail::connect_sender{socket.context_, socket.fd_.get(), std::forward<ip_endpoint>(endpoint)};
+    // }
 
-    auto tag_invoke(tag_t<async_connect>, auto &context, int fd, ip_endpoint const &endpoint) noexcept {
-        return detail::connect_sender{context, fd, endpoint};
-    }
+    // auto tag_invoke(tag<async_connect>, auto &context, int fd, ip_endpoint const &endpoint) noexcept {
+    //     return detail::connect_sender{context, fd, endpoint};
+    // }
 
-    auto tag_invoke(tag_t<async_send>, async_socket &socket, span<const std::byte> buffer) noexcept {
-        return detail::send_sender{socket.context_, socket.fd_.get(), buffer};
-    }
+    // auto tag_invoke(tag<async_send>, async_socket &socket, span<const std::byte> buffer) noexcept {
+    //     return detail::send_sender{socket.context_, socket.fd_.get(), buffer};
+    // }
 
-    auto tag_invoke(tag_t<async_recv>, async_socket &socket, span<std::byte> buffer) noexcept {
-        return detail::recv_sender{socket.context_, socket.fd_.get(), buffer};
-    }
+    // auto tag_invoke(tag<async_recv>, async_socket &socket, span<std::byte> buffer) noexcept {
+    //     return detail::recv_sender{socket.context_, socket.fd_.get(), buffer};
+    // }
 
-    auto tag_invoke(tag_t<async_send_to>, async_socket &socket, span<const std::byte> buffer,
+    auto tag_invoke(tag<async_send_to>, async_socket &socket, std::span<const std::byte> buffer,
                     net::ip_endpoint const &endpoint) noexcept {
         return detail::send_to_sender{socket.context_, socket.fd_.get(), endpoint, buffer};
     }
 
-    auto tag_invoke(tag_t<async_recv_from>, async_socket &socket, span<std::byte> buffer) noexcept {
-        return detail::recv_from_sender{socket.context_, socket.fd_.get(), buffer};
-    }
+    // auto tag_invoke(tag<async_recv_from>, async_socket &socket, span<std::byte> buffer) noexcept {
+    //     return detail::recv_from_sender{socket.context_, socket.fd_.get(), buffer};
+    // }
 
-    auto tag_invoke(tag_t<has_pending_data>, async_socket &socket) noexcept {
-        int count = 0;
-        ioctl(socket.fd_.get(), FIONREAD, &count);
-        return count > 0;
-    }
-}// namespace g6::net
+    // auto tag_invoke(tag<has_pending_data>, async_socket &socket) noexcept {
+    //     int count = 0;
+    //     ioctl(socket.fd_.get(), FIONREAD, &count);
+    //     return count > 0;
+    // }
 
-namespace g6::io {
-    net::async_socket tag_invoke(tag_t<net::open_socket>, auto &ctx, int domain, int type, int proto) {
+    net::async_socket tag_invoke(tag<net::open_socket>, auto &ctx, int domain, int type, int proto) {
         int result = socket(domain, type, proto);
         if (result < 0) {
             int errorCode = errno;
-            throw_(std::system_error{errorCode, std::system_category()});
+            throw std::system_error{errorCode, std::system_category()};
         }
         return net::async_socket{ctx, result};
     }
 
     template<class IOContext2>
-    auto tag_invoke(unifex::tag_t<net::open_socket>, IOContext2 &ctx, net::detail::tags::tcp_server const &,
+    auto tag_invoke(tag<net::open_socket>, IOContext2 &ctx, net::detail::tags::tcp_server const &,
                     const net::ip_endpoint &endpoint) {
         auto sock = net::open_socket(ctx, AF_INET, SOCK_STREAM);
         sock.bind(endpoint);
@@ -347,8 +373,7 @@ namespace g6::io {
     }
 
     template<class IOContext2>
-    auto tag_invoke(unifex::tag_t<net::open_socket>, IOContext2 &ctx, net::detail::tags::tcp_client const &) {
+    auto tag_invoke(tag<net::open_socket>, IOContext2 &ctx, net::detail::tags::tcp_client const &) {
         return net::open_socket(ctx, AF_INET, SOCK_STREAM);
     }
-
 }// namespace g6::net

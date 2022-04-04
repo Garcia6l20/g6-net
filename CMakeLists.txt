@@ -20,14 +20,7 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake ${CMAKE_BINARY_DIR})
 ##
 ## Dependencies
 ##
-option(G6_UNIFEX_DEVEL "Enable unifex development" OFF)
-set(_BUILD_TESTING ${BUILD_TESTING})
-if (NOT G6_UNIFEX_DEVEL)
-  set(BUILD_TESTING OFF CACHE INTERNAL "" FORCE)
-endif()
-set(UNIFEX_BUILD_EXAMPLES ${G6_UNIFEX_DEVEL})
-add_subdirectory(external/libunifex)
-set(BUILD_TESTING ${_BUILD_TESTING} CACHE INTERNAL "" FORCE)
+add_subdirectory(external/g6-coro)
 
 find_package(MbedTLS REQUIRED)
 find_package(fmt REQUIRED)
@@ -51,7 +44,7 @@ add_library(${PROJECT_NAME}
   )
 add_library(g6::net ALIAS ${PROJECT_NAME})
 target_include_directories(${PROJECT_NAME} PUBLIC include)
-target_link_libraries(${PROJECT_NAME} PUBLIC unifex fmt::fmt spdlog::spdlog MbedTLS::MbedTLS)
+target_link_libraries(${PROJECT_NAME} PUBLIC g6::coro fmt::fmt spdlog::spdlog MbedTLS::MbedTLS)
 
 option(G6_NO_IO_URING "Disable IO uring as default context" OFF)
 if (G6_NO_IO_URING)

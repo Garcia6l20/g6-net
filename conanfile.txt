@@ -1,5 +1,5 @@
 [build_requires]
-catch2/2.13.4
+catch2/2.13.8
 
 [requires]
 fmt/7.1.3

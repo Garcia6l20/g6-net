@@ -126,6 +126,7 @@ namespace g6::net {
 
         friend auto tag_invoke(tag<async_recv_from>, async_socket &socket, std::span<std::byte> buffer) noexcept;
 
+        friend auto tag_invoke(tag<pending_bytes>, async_socket &socket) noexcept;
         friend auto tag_invoke(tag<has_pending_data>, async_socket &socket) noexcept;
 
     protected:

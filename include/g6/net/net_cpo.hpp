@@ -14,6 +14,7 @@ namespace g6::net {
     G6_MAKE_CPO(async_recv)
     G6_MAKE_CPO(async_recv_from)
 
+    G6_MAKE_CPO(pending_bytes)
     G6_MAKE_CPO(has_pending_data)
 
 }// namespace g6::net

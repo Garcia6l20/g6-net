@@ -426,11 +426,20 @@ namespace g6::net {
         return detail::recv_from_sender{socket.context_, socket, buffer};
     }
 
-    // auto tag_invoke(tag<has_pending_data>, async_socket &socket) noexcept {
-    //     int count = 0;
-    //     ioctl(socket.fd_.get(), FIONREAD, &count);
-    //     return count > 0;
-    // }
+    auto tag_invoke(tag<pending_bytes>, async_socket &socket) noexcept {
+#if G6_OS_WINDOWS
+        unsigned long count = 0;
+        DWORD out_sz = 0;
+        (void)::WSAIoctl(socket.fd_.get(), FIONREAD, nullptr, 0, &count, sizeof(count), &out_sz, nullptr, nullptr);
+#else
+        int count = 0;
+        (void)::ioctl(socket.fd_.get(), FIONREAD, &count);
+#endif
+        return count;
+    }
+    auto tag_invoke(tag<has_pending_data>, async_socket &socket) noexcept {
+        return pending_bytes(socket) > 0;
+    }
 
     // template<class IOContext2>
     // auto tag_invoke(tag<net::open_socket>, IOContext2 &ctx, net::detail::tags::tcp_server const &,

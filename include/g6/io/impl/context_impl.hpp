@@ -23,6 +23,7 @@ namespace g6::io {
 
     std::tuple<SOCKET, bool> create_socket(int addressFamily, int socketType, int protocol, HANDLE ioCompletionPort) {
         // Enumerate available protocol providers for the specified socket type.
+        ensure_winsock_initialized();
 
         WSAPROTOCOL_INFOW stackInfos[4];
         std::unique_ptr<WSAPROTOCOL_INFOW[]> heapInfos;
@@ -140,7 +141,6 @@ namespace g6::io {
 #endif
 
     auto tag_invoke(tag<net::open_socket>, io::context &ctx, int domain, int type, int proto) {
-        ensure_winsock_initialized();
         auto [socket, skip_completion] = create_socket(domain, type, proto, ctx.iocp_handle());
         if (socket == INVALID_SOCKET) {
             int errorCode = errno;

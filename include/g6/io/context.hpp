@@ -5,12 +5,19 @@
 
 #include <g6/io/config.hpp>
 #include <g6/io/io_cpo.hpp>
+#include <g6/net/net_cpo.hpp>
 
 #include <spdlog/spdlog.h>
 
 namespace g6::io {
 
     class context : public io_context {
+
+#if G6_OS_WINDOWS
+        static inline bool winsock_initialized = false;
+        friend void ensure_winsock_initialized();
+#endif
+
         // template<auto FileNo>
         // class term_io_ {
         //     static const auto fileno_ = FileNo;
@@ -34,8 +41,11 @@ namespace g6::io {
         // };
 
     public:
+        friend auto tag_invoke(tag<net::open_socket>, io::context &ctx, int domain, int type, int proto);
     };
 
 }// namespace g6::io
+
+#include <g6/io/impl/context_impl.hpp>
 
 #endif// G6_IO_CONTEXT_HPP_

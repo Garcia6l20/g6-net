@@ -9,30 +9,33 @@
 
 #include <g6/spawner.hpp>
 
-using namespace g6;
 
 TEST_CASE("udp tx/rx test", "[g6::net::udp]") {
-    io::context ctx{};
+    g6::io::context ctx{};
     std::stop_source stop_source{};
+    using namespace std::chrono_literals;
 
-    spawner{//   [&]() -> task<size_t> {
-            //       scope_guard _ = [&]() noexcept { stop_source.request_stop(); };
-            //       auto sock = net::open_socket(ctx, AF_INET, SOCK_DGRAM);
-            //       std::array<std::byte, 64> buffer{};
-            //       sock.bind(*net::ip_endpoint::from_string("127.0.0.1:4242"));
-            //       auto [bytes_received, from] = co_await g6::net::async_recv_from(
-            //           sock, std::as_writable_bytes(std::span{buffer.data(), buffer.size()}));
-            //       co_return bytes_received;
-            //   }(),
-            [&]() -> task<size_t> {
-                auto sock = net::open_socket(ctx, AF_INET, SOCK_DGRAM);
-                const char buffer[] = {"hello world !!!"};
-                auto bytes_sent = co_await g6::net::async_send_to(sock, as_bytes(std::span{buffer}),
-                                                                  *g6::net::ip_endpoint::from_string("127.0.0.1:4242"));
-                co_return bytes_sent;
-            }(),
-            g6::async_run(ctx)}
+    auto [rx_bytes, tx_bytes, _] = g6::spawner{[&]() -> g6::task<size_t> {
+                    g6::scope_guard _ = [&]() noexcept { stop_source.request_stop(); };
+                    auto sock = g6::net::open_socket(ctx, AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+                    std::array<std::byte, 64> buffer{};
+                    sock.bind(*g6::net::ip_endpoint::from_string("127.0.0.1:4242"));
+                    auto [bytes_received, from] = co_await g6::net::async_recv_from(
+                        sock, std::as_writable_bytes(std::span{buffer.data(), buffer.size()}));
+                    co_return bytes_received;
+                }(),
+                [&]() -> g6::task<size_t> {
+                    auto sock = g6::net::open_socket(ctx, AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+                    const char buffer[] = {"hello world !!!"};
+                    co_await g6::schedule_after(ctx, 10ms);
+                    auto bytes_sent = co_await g6::net::async_send_to(sock, as_bytes(std::span{buffer}),
+                                                    *g6::net::ip_endpoint::from_string("127.0.0.1:4242"));
+                    co_return bytes_sent;
+                }(),
+                g6::async_exec(ctx, stop_source.get_token())}
         .sync_wait();
+    REQUIRE(tx_bytes != 0);
+    REQUIRE(rx_bytes == tx_bytes);
 }
 
 // TEST_CASE("udp has_pending_data test", "[g6::net::udp]") {

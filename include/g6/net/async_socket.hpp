@@ -15,21 +15,35 @@ namespace g6::net {
             struct tcp_client {};
         }// namespace tags
 
-        struct accept_sender;
-        struct connect_sender;
-        struct recv_sender;
-        struct recv_from_sender;
-        struct send_sender;
-        struct send_to_sender;
+#if G6_OS_WINDOWS
+        template<typename Operation>
+        class wsa_operation_base;
+#endif
+
+        class accept_sender;
+        class connect_sender;
+        class recv_sender;
+        class recv_from_sender;
+        class send_sender;
+        class send_to_sender;
     }// namespace detail
 
     inline const detail::tags::tcp_server tcp_server;
     inline const detail::tags::tcp_client tcp_client;
 
     class async_socket {
+        friend class detail::send_to_sender;
+        friend class detail::recv_from_sender;
+
+#if G6_OS_WINDOWS
+        template<typename Operation>
+        friend class detail::wsa_operation_base;
+#endif
+
     public:
-        using safe_handle_t = safe_handle<SOCKET, closesocket>;
-        explicit async_socket(io::context &context, safe_handle_t::handle_t fd) noexcept : context_(context), fd_(fd) {}
+        using socket_handle = safe_handle<SOCKET, closesocket, INVALID_SOCKET>;
+        explicit async_socket(io::context &context, socket_handle::handle_t fd, bool skip_completion) noexcept
+            : context_{context}, fd_{fd}, skip_completion_{skip_completion} {}
 
         async_socket(async_socket &&) = default;
         async_socket(async_socket const &) = delete;
@@ -115,10 +129,12 @@ namespace g6::net {
         friend auto tag_invoke(tag<has_pending_data>, async_socket &socket) noexcept;
 
     protected:
-        safe_handle_t fd_;
+        socket_handle fd_;
         io::context &context_;
+#if G6_OS_WINDOWS
+        bool skip_completion_;
+#endif
     };
-    net::async_socket tag_invoke(tag<net::open_socket>, auto &ctx, int domain, int type, int proto = 0);
 
 }// namespace g6::net
 

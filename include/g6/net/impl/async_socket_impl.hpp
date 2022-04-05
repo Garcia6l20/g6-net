@@ -289,28 +289,106 @@ namespace g6::net {
 #error "not implemented"
 #else// G6_IO_USE_IOCP_CONTEXT
 
-        class send_to_sender : operation_base {
+        template<typename Operation>
+        class wsa_operation_base : protected operation_base {
         public:
-            // Produces number of bytes read.
-            template<template<typename...> class Variant, template<typename...> class Tuple>
-            using value_types = Variant<Tuple<size_t>>;
+            bool await_ready() const noexcept { return false; }
+            auto await_suspend(std::coroutine_handle<> awaiter) {
+                awaiter_ = awaiter;
 
-            // Note: Only case it might complete with exception_ptr is if the
-            // receiver's set_value() exits with an exception.
-            template<template<typename...> class Variant>
-            using error_types = Variant<std::error_code, std::exception_ptr>;
+                const bool skipCompletionOnSuccess = socket_.skip_completion_;
+                auto result = static_cast<Operation &>(*this).start_op();
+                if (result == SOCKET_ERROR) {
+                    int errorCode = ::WSAGetLastError();
+                    if (errorCode != WSA_IO_PENDING) {
+                        // Failed synchronously.
+                        error_code_ = static_cast<DWORD>(errorCode);
+                        return false;
+                    }
+                } else if (skipCompletionOnSuccess) {
+                    // Completed synchronously, no completion event will be posted to the IOCP.
+                    error_code_ = ERROR_SUCCESS;
+                    return false;
+                }
 
-            static constexpr bool sends_done = true;
+                // Operation will complete asynchronously.
+                return true;
+            }
+            auto await_resume() {
+                if (error_code_ != 0) { throw std::system_error{error_code_, std::system_category()}; }
+                return static_cast<Operation &>(*this).op_result();;
+            }
 
-            explicit send_to_sender(io::context &context, SOCKET fd, const net::ip_endpoint &endpoint,
+            explicit wsa_operation_base(io::context &context, async_socket &socket,
+                                        std::span<const std::byte> buffer) noexcept
+                : context_{context}, socket_{socket} {
+                buffer_.len = buffer.size();
+                buffer_.buf = reinterpret_cast<decltype(buffer_.buf)>(const_cast<std::byte *>(buffer.data()));
+            }
+
+        protected:
+            io::context &context_;
+            async_socket &socket_;
+            WSABUF buffer_;
+        };
+
+        class send_to_sender : public wsa_operation_base<send_to_sender> {
+            friend class wsa_operation_base<send_to_sender>;
+            auto start_op() {
+                SOCKADDR_STORAGE destinationAddress;
+                const int destinationLength = to_.to_sockaddr(destinationAddress);
+
+                DWORD numberOfBytesSent = 0;
+                auto result = ::WSASendTo(socket_.fd_.get(), reinterpret_cast<WSABUF *>(&buffer_),
+                                          1,// buffer count
+                                          &numberOfBytesSent,
+                                          0,// flags
+                                          reinterpret_cast<const SOCKADDR *>(&destinationAddress), destinationLength,
+                                          reinterpret_cast<_OVERLAPPED *>(this), nullptr);
+                byte_count_ = numberOfBytesSent;
+                return result;
+            }
+
+            auto op_result() const noexcept {
+                return byte_count_;
+            }
+
+        public:
+            explicit send_to_sender(io::context &context, async_socket &socket, const net::ip_endpoint &endpoint,
                                     std::span<const std::byte> buffer) noexcept
-                : context_{context}, fd_{fd}, buffer_{buffer}, to_{endpoint} {}
+                : wsa_operation_base<send_to_sender>{context, socket, buffer}, to_{endpoint} {}
 
         private:
-            io::context &context_;
-            SOCKET fd_;
-            std::span<const std::byte> buffer_;
             net::ip_endpoint to_;
+        };
+
+        class recv_from_sender : public wsa_operation_base<recv_from_sender> {
+            friend class wsa_operation_base<recv_from_sender>;
+            auto start_op() {
+                DWORD numberOfBytesRecvd = 0;
+                DWORD flags = 0;
+                auto result = ::WSARecvFrom(socket_.fd_.get(), reinterpret_cast<WSABUF *>(&buffer_),
+                                            1,// buffer count
+                                            &numberOfBytesRecvd,
+                                            &flags,// flags
+                                            reinterpret_cast<SOCKADDR *>(&from_), &from_len_,
+                                            reinterpret_cast<_OVERLAPPED *>(this), nullptr);
+                byte_count_ = numberOfBytesRecvd;
+                return result;
+            }
+
+            auto op_result() noexcept {
+                return std::make_tuple(byte_count_, net::ip_endpoint::from_sockaddr(*reinterpret_cast<sockaddr*>(&from_)));
+            }
+
+        public:
+            explicit recv_from_sender(io::context &context, async_socket &socket,
+                                      std::span<const std::byte> buffer) noexcept
+                : wsa_operation_base<recv_from_sender>{context, socket, buffer} {}
+
+        private:
+            SOCKADDR_STORAGE from_{0};
+            int from_len_{sizeof(SOCKADDR_STORAGE)};
         };
 #endif
     }// namespace detail
@@ -341,12 +419,12 @@ namespace g6::net {
 
     auto tag_invoke(tag<async_send_to>, async_socket &socket, std::span<const std::byte> buffer,
                     net::ip_endpoint const &endpoint) noexcept {
-        return detail::send_to_sender{socket.context_, socket.fd_.get(), endpoint, buffer};
+        return detail::send_to_sender{socket.context_, socket, endpoint, buffer};
     }
 
-    // auto tag_invoke(tag<async_recv_from>, async_socket &socket, span<std::byte> buffer) noexcept {
-    //     return detail::recv_from_sender{socket.context_, socket.fd_.get(), buffer};
-    // }
+    auto tag_invoke(tag<async_recv_from>, async_socket &socket, std::span<std::byte> buffer) noexcept {
+        return detail::recv_from_sender{socket.context_, socket, buffer};
+    }
 
     // auto tag_invoke(tag<has_pending_data>, async_socket &socket) noexcept {
     //     int count = 0;
@@ -354,26 +432,17 @@ namespace g6::net {
     //     return count > 0;
     // }
 
-    net::async_socket tag_invoke(tag<net::open_socket>, auto &ctx, int domain, int type, int proto) {
-        int result = socket(domain, type, proto);
-        if (result < 0) {
-            int errorCode = errno;
-            throw std::system_error{errorCode, std::system_category()};
-        }
-        return net::async_socket{ctx, result};
-    }
+    // template<class IOContext2>
+    // auto tag_invoke(tag<net::open_socket>, IOContext2 &ctx, net::detail::tags::tcp_server const &,
+    //                 const net::ip_endpoint &endpoint) {
+    //     auto sock = net::open_socket(ctx, AF_INET, SOCK_STREAM);
+    //     sock.bind(endpoint);
+    //     sock.listen();
+    //     return sock;
+    // }
 
-    template<class IOContext2>
-    auto tag_invoke(tag<net::open_socket>, IOContext2 &ctx, net::detail::tags::tcp_server const &,
-                    const net::ip_endpoint &endpoint) {
-        auto sock = net::open_socket(ctx, AF_INET, SOCK_STREAM);
-        sock.bind(endpoint);
-        sock.listen();
-        return sock;
-    }
-
-    template<class IOContext2>
-    auto tag_invoke(tag<net::open_socket>, IOContext2 &ctx, net::detail::tags::tcp_client const &) {
-        return net::open_socket(ctx, AF_INET, SOCK_STREAM);
-    }
+    // template<class IOContext2>
+    // auto tag_invoke(tag<net::open_socket>, IOContext2 &ctx, net::detail::tags::tcp_client const &) {
+    //     return net::open_socket(ctx, AF_INET, SOCK_STREAM);
+    // }
 }// namespace g6::net

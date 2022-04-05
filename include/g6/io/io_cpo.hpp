@@ -1,12 +1,12 @@
 #ifndef G6_NET_IO_CPO_HPP_
 #define G6_NET_IO_CPO_HPP_
 
-#include <g6/utils/cpo.hpp>
+#include <g6/tag_invoke.hpp>
 
 namespace g6::io {
 
-    G6_CPO_DEF(async_write)
-    G6_CPO_DEF(async_read)
+    G6_MAKE_CPO(async_write)
+    G6_MAKE_CPO(async_read)
 
 }// namespace g6::io
 

@@ -1,10 +1,5 @@
 #include <catch2/catch.hpp>
 
-#include <unifex/sync_wait.hpp>
-#include <unifex/task.hpp>
-#include <unifex/transform.hpp>
-#include <unifex/when_all.hpp>
-
 #include <g6/io/context.hpp>
 #include <g6/net/ip_endpoint.hpp>
 #include <g6/ssl/async_socket.hpp>

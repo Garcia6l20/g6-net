@@ -1,4 +1,8 @@
 #include <g6/io/context.hpp>
+namespace g6::io {
+    std::tuple<SOCKET, bool> create_socket(int addressFamily, int socketType, int protocol, HANDLE ioCompletionPort);
+}
+
 #include <g6/net/async_socket.hpp>
 
 #include <g6/utils/scope_guard.hpp>
@@ -142,6 +146,6 @@ namespace g6::io {
             int errorCode = errno;
             throw std::system_error{errorCode, std::system_category()};
         }
-        return net::async_socket{ctx, socket, skip_completion};
+        return net::async_socket{ctx, socket, domain, type, proto, skip_completion};
     }
 }// namespace g6::io

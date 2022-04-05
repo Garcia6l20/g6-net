@@ -10,10 +10,6 @@
 namespace g6::net {
 
     namespace detail {
-        namespace tags {
-            struct tcp_server {};
-            struct tcp_client {};
-        }// namespace tags
 
 #if G6_OS_WINDOWS
         template<typename Operation>
@@ -28,12 +24,13 @@ namespace g6::net {
         class send_to_sender;
     }// namespace detail
 
-    inline const detail::tags::tcp_server tcp_server;
-    inline const detail::tags::tcp_client tcp_client;
-
     class async_socket {
         friend class detail::send_to_sender;
+        friend class detail::send_sender;
         friend class detail::recv_from_sender;
+        friend class detail::recv_sender;
+        friend class detail::accept_sender;
+        friend class detail::connect_sender;
 
 #if G6_OS_WINDOWS
         template<typename Operation>
@@ -42,8 +39,10 @@ namespace g6::net {
 
     public:
         using socket_handle = safe_handle<SOCKET, closesocket, INVALID_SOCKET>;
-        explicit async_socket(io::context &context, socket_handle::handle_t fd, bool skip_completion) noexcept
-            : context_{context}, fd_{fd}, skip_completion_{skip_completion} {}
+        explicit async_socket(io::context &context, socket_handle::handle_t fd, int domain, int type, int proto,
+                              bool skip_completion) noexcept
+            : context_{context}, fd_{fd}, domain_{domain}, type_{type}, proto_{proto}, skip_completion_{
+                                                                                           skip_completion} {}
 
         async_socket(async_socket &&) = default;
         async_socket(async_socket const &) = delete;
@@ -71,6 +70,10 @@ namespace g6::net {
             if (getsockname(fd_.get(), &sockaddr_in_, &sockaddr_in_len) < 0) { return std::nullopt; }
             return net::ip_endpoint::from_sockaddr(sockaddr_in_);
         }
+
+        auto domain() const noexcept { return domain_; }
+        auto type() const noexcept { return type_; }
+        auto proto() const noexcept { return proto_; }
 
         void listen(size_t count = 100) {
             if (::listen(fd_.get(), count) < 0) { throw std::system_error(-errno, std::system_category()); }
@@ -112,26 +115,33 @@ namespace g6::net {
             }
         }
 
-        friend auto tag_invoke(tag<async_accept>, async_socket &socket) noexcept;
+        friend auto tag_invoke(tag<async_accept>, async_socket &socket, std::stop_token stop_token) noexcept;
 
-        friend auto tag_invoke(tag<async_connect>, async_socket &socket, ip_endpoint &&endpoint) noexcept;
-        friend auto tag_invoke(tag<async_connect>, async_socket &socket, ip_endpoint const &endpoint) noexcept;
+        friend auto tag_invoke(tag<async_connect>, async_socket &socket, ip_endpoint const &endpoint,
+                               std::stop_token stop_token) noexcept;
 
-        friend auto tag_invoke(tag<async_send>, async_socket &socket, std::span<const std::byte> buffer) noexcept;
+        friend auto tag_invoke(tag<async_send>, async_socket &socket, std::span<const std::byte> buffer,
+                               std::stop_token stop_token) noexcept;
 
-        friend auto tag_invoke(tag<async_recv>, async_socket &socket, std::span<std::byte> buffer) noexcept;
+        friend auto tag_invoke(tag<async_recv>, async_socket &socket, std::span<std::byte> buffer,
+                               std::stop_token stop_token) noexcept;
 
         friend auto tag_invoke(tag<async_send_to>, async_socket &socket, std::span<const std::byte> buffer,
-                               net::ip_endpoint const &endpoint) noexcept;
+                               net::ip_endpoint const &endpoint, std::stop_token stop_token) noexcept;
 
-        friend auto tag_invoke(tag<async_recv_from>, async_socket &socket, std::span<std::byte> buffer) noexcept;
+        friend auto tag_invoke(tag<async_recv_from>, async_socket &socket, std::span<std::byte> buffer,
+                               std::stop_token stop_token) noexcept;
 
         friend auto tag_invoke(tag<pending_bytes>, async_socket &socket) noexcept;
+
         friend auto tag_invoke(tag<has_pending_data>, async_socket &socket) noexcept;
 
     protected:
         socket_handle fd_;
         io::context &context_;
+        int domain_;
+        int type_;
+        int proto_;
 #if G6_OS_WINDOWS
         bool skip_completion_;
 #endif

@@ -52,7 +52,7 @@ if (G6_NO_IO_URING)
 endif()
 
 if(WIN32)
-  target_link_libraries(${PROJECT_NAME} PUBLIC ws2_32)
+  target_link_libraries(${PROJECT_NAME} PUBLIC wsock32 ws2_32)
 endif()
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_BINARY_DIR})

@@ -31,13 +31,13 @@ TEST_CASE("ssl tcp tx/rx test", "[g6::ssl::tcp]") {
 
     auto [server_result, client_result, _] =
         spawner{[&]() -> task<size_t> {
-                    scope_guard _ = [&]() noexcept { stop_source.request_stop(); };
                     server.listen();
                     auto [session, client_address] = co_await net::async_accept(server);
                     char buffer[1024]{};
                     try {
                         auto received = co_await net::async_recv(session, as_writable_bytes(std::span{buffer}));
                         spdlog::info("server received {} bytes", received);
+                        co_await net::async_send(session, as_bytes(std::span{buffer, received}));
                         co_return received;
                     } catch (std::system_error &error) {
                         spdlog::error("server error: {}", error.what());
@@ -45,6 +45,7 @@ TEST_CASE("ssl tcp tx/rx test", "[g6::ssl::tcp]") {
                     }
                 }(),
                 [&]() -> task<size_t> {
+                    scope_guard _ = [&]() noexcept { stop_source.request_stop(); };
                     auto client = net::open_socket(ctx, ssl::tcp_client);
                     client.bind(*net::ip_endpoint::from_string("127.0.0.1:0"));
                     client.host_name("localhost");
@@ -54,6 +55,9 @@ TEST_CASE("ssl tcp tx/rx test", "[g6::ssl::tcp]") {
                     const char buffer[] = {"hello world !!!"};
                     auto sent = co_await net::async_send(client, as_bytes(std::span{buffer}));
                     spdlog::info("client sent: {} bytes", sent);
+                    char rx_buffer[64];
+                    auto rx_bytes = co_await net::async_recv(client, as_writable_bytes(std::span{rx_buffer}));
+                    REQUIRE(std::memcmp(buffer, rx_buffer, rx_bytes) == 0);
                     co_return sent;
                 }(),
                 async_exec(ctx, stop_source.get_token())}

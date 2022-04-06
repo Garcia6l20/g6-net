@@ -5,7 +5,10 @@
 
 #include <g6/io/config.hpp>
 #include <g6/io/io_cpo.hpp>
+
 #include <g6/net/net_cpo.hpp>
+#include <g6/net/socket_protocols.hpp>
+#include <g6/net/ip_endpoint.hpp>
 
 #include <spdlog/spdlog.h>
 
@@ -41,7 +44,7 @@ namespace g6::io {
         // };
 
     public:
-        friend auto tag_invoke(tag<net::open_socket>, io::context &ctx, int domain, int type, int proto);
+        friend auto tag_invoke(tag<net::open_socket>, io::context &ctx, net::socket_protocol socket_protocol);
     };
 
 }// namespace g6::io

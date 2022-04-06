@@ -1,6 +1,7 @@
 #include <g6/io/context.hpp>
+
 namespace g6::io {
-    std::tuple<SOCKET, bool> create_socket(int addressFamily, int socketType, int protocol, HANDLE ioCompletionPort);
+    std::tuple<SOCKET, bool> create_socket(net::socket_protocol type, HANDLE ioCompletionPort);
 }
 
 #include <g6/net/async_socket.hpp>
@@ -21,7 +22,7 @@ namespace g6::io {
         }
     }
 
-    std::tuple<SOCKET, bool> create_socket(int addressFamily, int socketType, int protocol, HANDLE ioCompletionPort) {
+    std::tuple<SOCKET, bool> create_socket(net::socket_protocol type, HANDLE ioCompletionPort) {
         // Enumerate available protocol providers for the specified socket type.
         ensure_winsock_initialized();
 
@@ -30,7 +31,7 @@ namespace g6::io {
         WSAPROTOCOL_INFOW *selectedProtocolInfo = nullptr;
 
         {
-            INT protocols[] = {protocol, 0};
+            INT protocols[] = {type.proto, 0};
             DWORD bufferSize = sizeof(stackInfos);
             WSAPROTOCOL_INFOW *infos = stackInfos;
 
@@ -58,8 +59,8 @@ namespace g6::io {
 
             for (int i = 0; i < protocolCount; ++i) {
                 auto &info = infos[i];
-                if (info.iAddressFamily == addressFamily && info.iProtocol == protocol
-                    && info.iSocketType == socketType) {
+                if (info.iAddressFamily == type.domain && info.iProtocol == type.proto
+                    && info.iSocketType == type.type) {
                     selectedProtocolInfo = &info;
                     break;
                 }
@@ -75,7 +76,7 @@ namespace g6::io {
 
         const DWORD flags = WSA_FLAG_OVERLAPPED | flagNoInherit;
 
-        const SOCKET socketHandle = ::WSASocketW(addressFamily, socketType, protocol, selectedProtocolInfo, 0, flags);
+        const SOCKET socketHandle = ::WSASocketW(type.domain, type.type, type.proto, selectedProtocolInfo, 0, flags);
         if (socketHandle == INVALID_SOCKET) {
             const int errorCode = ::WSAGetLastError();
             throw std::system_error(errorCode, std::system_category(), "Error creating socket: WSASocketW");
@@ -117,7 +118,7 @@ namespace g6::io {
             }
         }
 
-        if (socketType == SOCK_STREAM) {
+        if (type.type == SOCK_STREAM) {
             // Turn off linger so that the destructor doesn't block while closing
             // the socket or silently continue to flush remaining data in the
             // background after ::closesocket() is called, which could fail and
@@ -140,12 +141,12 @@ namespace g6::io {
     }
 #endif
 
-    auto tag_invoke(tag<net::open_socket>, io::context &ctx, int domain, int type, int proto) {
-        auto [socket, skip_completion] = create_socket(domain, type, proto, ctx.iocp_handle());
+    auto tag_invoke(tag<net::open_socket>, io::context &ctx, net::socket_protocol sock_type) {        
+        auto [socket, skip_completion] = create_socket(sock_type, ctx.iocp_handle());
         if (socket == INVALID_SOCKET) {
             int errorCode = errno;
             throw std::system_error{errorCode, std::system_category()};
         }
-        return net::async_socket{ctx, socket, domain, type, proto, skip_completion};
+        return net::async_socket{ctx, socket, sock_type, skip_completion};
     }
 }// namespace g6::io

@@ -3,7 +3,9 @@
 #include <g6/net/net_cpo.hpp>
 
 #include <g6/io/context.hpp>
+
 #include <g6/net/ip_endpoint.hpp>
+#include <g6/net/socket_protocols.hpp>
 
 #include <span>
 
@@ -39,10 +41,9 @@ namespace g6::net {
 
     public:
         using socket_handle = safe_handle<SOCKET, closesocket, INVALID_SOCKET>;
-        explicit async_socket(io::context &context, socket_handle::handle_t fd, int domain, int type, int proto,
+        explicit async_socket(io::context &context, socket_handle::handle_t fd, socket_protocol type,
                               bool skip_completion) noexcept
-            : context_{context}, fd_{fd}, domain_{domain}, type_{type}, proto_{proto}, skip_completion_{
-                                                                                           skip_completion} {}
+            : context_{context}, fd_{fd}, type_{type}, skip_completion_{skip_completion} {}
 
         async_socket(async_socket &&) = default;
         async_socket(async_socket const &) = delete;
@@ -71,9 +72,7 @@ namespace g6::net {
             return net::ip_endpoint::from_sockaddr(sockaddr_in_);
         }
 
-        auto domain() const noexcept { return domain_; }
-        auto type() const noexcept { return type_; }
-        auto proto() const noexcept { return proto_; }
+        socket_protocol type() const noexcept { return type_; }
 
         void listen(size_t count = 100) {
             if (::listen(fd_.get(), count) < 0) { throw std::system_error(-errno, std::system_category()); }
@@ -139,9 +138,7 @@ namespace g6::net {
     protected:
         socket_handle fd_;
         io::context &context_;
-        int domain_;
-        int type_;
-        int proto_;
+        socket_protocol type_;
 #if G6_OS_WINDOWS
         bool skip_completion_;
 #endif

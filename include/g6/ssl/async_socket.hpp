@@ -60,8 +60,8 @@ namespace g6::ssl {
 
     class async_socket : public net::async_socket {
     private:
-#ifdef G6_SSL_DEBUG
         static void _mbedtls_debug(void *ctx, int level, const char *file, int line, const char *str) noexcept {
+#ifdef G6_SSL_DEBUG
             //            auto ssl_ctx = static_cast<mbedtls_ssl_context*>(ctx);
             static constexpr std::string_view fmt = "{}:{}: {}";
             switch (level) {
@@ -78,8 +78,8 @@ namespace g6::ssl {
                     spdlog::debug(fmt, file, line, str);
                     break;
             }
-        }
 #endif
+        }
 
         static int _mbedtls_verify_cert(void *ctx, mbedtls_x509_crt *crt, int depth, uint32_t *flags) noexcept {
             auto &self = *reinterpret_cast<ssl::async_socket *>(ctx);
@@ -166,10 +166,10 @@ namespace g6::ssl {
             }
         }
 
-        async_socket(io::context &io_context, socket_handle::handle_t fd, int domain, int level, int proto,
+        async_socket(io::context &io_context, socket_handle::handle_t fd, net::socket_protocol proto,
                      connection_mode mode_, std::optional<ssl::certificate> cert, std::optional<ssl::private_key> key,
                      bool skip_on_success)
-            : net::async_socket{io_context, fd, domain, level, proto, skip_on_success}, mode_{mode_},
+            : net::async_socket{io_context, fd, proto, skip_on_success}, mode_{mode_},
               certificate_{std::move(cert)}, key_{std::move(key)}, verify_mode_{mode_ == connection_mode::server
                                                                                     ? peer_verify_mode::none
                                                                                     : peer_verify_mode::required} {
@@ -198,7 +198,7 @@ namespace g6::ssl {
 
         friend ssl::async_socket tag_invoke(tag<net::open_socket>, auto &ctx, ssl::detail::tags::tcp_client);
 
-        friend ssl::async_socket tag_invoke(tag<net::open_socket>, auto &ctx, ssl::detail::tags::tcp_client,
+        friend ssl::async_socket tag_invoke(tag<net::open_socket>, auto &ctx, ssl::detail::tags::tcp_server,
                                             ssl::certificate const &, ssl::private_key const &);
 
         void _mbedtls_setup_callbacks() {
@@ -206,10 +206,7 @@ namespace g6::ssl {
                                 &ssl::async_socket::_mbedtls_recv, &ssl::async_socket::_mbedtls_recv_timeout);
 
             mbedtls_ssl_conf_verify(ssl_config_.get(), &ssl::async_socket::_mbedtls_verify_cert, this);
-
-#ifdef G6_SSL_DEBUG
             mbedtls_ssl_conf_dbg(ssl_config_.get(), &ssl::async_socket::_mbedtls_debug, this);
-#endif
         }
 
         /** @brief Encrypt CPO
@@ -318,8 +315,8 @@ namespace g6::ssl {
         connection_mode mode_;
         std::optional<ssl::certificate> certificate_{};
         std::optional<ssl::private_key> key_{};
-        detail::mbedtls_ssl_context_ptr ssl_context_ = detail::mbedtls_ssl_context_ptr::make();
         detail::mbedtls_ssl_config_ptr ssl_config_ = detail::mbedtls_ssl_config_ptr::make();
+        detail::mbedtls_ssl_context_ptr ssl_context_ = detail::mbedtls_ssl_context_ptr::make();
         bool encrypted_ = false;
         peer_verify_mode verify_mode_;
         verify_flags verify_flags_{};
@@ -338,6 +335,7 @@ namespace g6::ssl {
             // update callbacks
             _mbedtls_setup_callbacks();
         }
+        async_socket(async_socket const&other) = delete;
         async_socket() = delete;
 
         virtual ~async_socket() noexcept = default;

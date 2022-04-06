@@ -493,8 +493,8 @@ namespace g6::net {
             explicit accept_sender(io::context &context, async_socket &socket, std::stop_token stop_token) noexcept
                 : wsa_operation_base<accept_sender>{context, socket, std::span<std::byte, 0>{}, stop_token} {
                 auto [handle, iocp_skip] =
-                    io::create_socket(socket.domain(), socket.type(), socket.proto(), context.iocp_handle());
-                accepting_socket_.emplace(context, handle, socket.domain(), socket.type(), socket.proto(), iocp_skip);
+                    io::create_socket(socket.type(), context.iocp_handle());
+                accepting_socket_.emplace(context, handle, socket.type(), iocp_skip);
             }
 
         private:
@@ -608,7 +608,7 @@ namespace g6::net {
     auto tag_invoke(tag<has_pending_data>, async_socket &socket) noexcept { return pending_bytes(socket) > 0; }
 
     // template<class IOContext2>
-    // auto tag_invoke(tag<net::open_socket>, IOContext2 &ctx, net::detail::tags::tcp_server const &,
+    // auto tag_invoke(tag<net::open_socket>, IOContext2 &ctx, net::detail::tags::tcp const &,
     //                 const net::ip_endpoint &endpoint) {
     //     auto sock = net::open_socket(ctx, AF_INET, SOCK_STREAM);
     //     sock.bind(endpoint);
@@ -617,7 +617,7 @@ namespace g6::net {
     // }
 
     // template<class IOContext2>
-    // auto tag_invoke(tag<net::open_socket>, IOContext2 &ctx, net::detail::tags::tcp_client const &) {
+    // auto tag_invoke(tag<net::open_socket>, IOContext2 &ctx, net::detail::tags::tcp const &) {
     //     return net::open_socket(ctx, AF_INET, SOCK_STREAM);
     // }
 }// namespace g6::net

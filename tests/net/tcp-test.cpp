@@ -18,7 +18,7 @@ TEST_CASE("tcp stop server test", "[g6::net::tcp]") {
 
     spawner{[&]() -> task<void> {
                 auto _ = scope_guard{[&] { stop_run.request_stop(); }};
-                auto sock = net::open_socket(ctx, AF_INET, SOCK_STREAM, IPPROTO_TCP);
+                auto sock = net::open_socket(ctx, net::protos::tcp);
                 sock.bind(*net::ip_endpoint::from_string("127.0.0.1:0"));
                 sock.listen();
                 try {
@@ -42,7 +42,7 @@ TEST_CASE("tcp tx/rx test", "[g6::net::tcp]") {
 
     auto [received, sent, _] = spawner{[&]() -> task<size_t> {
                                            scope_guard _ = [&]() noexcept { stop_source.request_stop(); };
-                                           auto sock = net::open_socket(ctx, AF_INET, SOCK_STREAM, IPPROTO_TCP);
+                                           auto sock = net::open_socket(ctx, net::protos::tcp);
                                            sock.bind(test_endpoint);
                                            sock.listen();
                                            auto [client, client_address] = co_await net::async_accept(sock);
@@ -52,8 +52,8 @@ TEST_CASE("tcp tx/rx test", "[g6::net::tcp]") {
                                            co_return byte_count;
                                        }(),
                                        [&]() -> task<size_t> {
-                                           auto sock = net::open_socket(ctx, AF_INET, SOCK_STREAM, IPPROTO_TCP);
-                                           sock.bind(*net::ip_endpoint::from_string("127.0.0.1:0000"));
+                                           auto sock = net::open_socket(ctx, net::protos::tcp);
+                                           sock.bind(*net::ip_endpoint::from_string("127.0.0.1:0"));
                                            co_await net::async_connect(sock, test_endpoint);
                                            const char buffer[] = {"hello world !!!"};
                                            auto sent = co_await net::async_send(sock, as_bytes(std::span{buffer}));

@@ -472,17 +472,12 @@ namespace g6::net {
                                        &localSockaddr, &localSockaddrLength, &remoteSockaddr, &remoteSockaddrLength);
 
                 {
+                    using update_context_opt =
+                        net::simple_scoket_option<SOL_SOCKET, SO_UPDATE_ACCEPT_CONTEXT, SOCKET, SOCKET>;
                     // Need to set SO_UPDATE_ACCEPT_CONTEXT after the accept completes
                     // to ensure that ::shutdown() and ::setsockopt() calls work on the
                     // accepted socket.
-                    SOCKET listenSocket = accepting_socket_->fd_.get();
-                    const int result = ::setsockopt(listenSocket, SOL_SOCKET, SO_UPDATE_ACCEPT_CONTEXT,
-                                                    (const char *) &listenSocket, sizeof(SOCKET));
-                    if (result == SOCKET_ERROR) {
-                        const int errorCode = ::WSAGetLastError();
-                        throw std::system_error{errorCode, std::system_category(),
-                                                "Socket accept operation failed: setsockopt(SO_UPDATE_ACCEPT_CONTEXT)"};
-                    }
+                    accepting_socket_->setopt<update_context_opt>(accepting_socket_->get_fd());
                 }
 
                 return std::make_tuple(std::move(accepting_socket_).value(),
@@ -492,9 +487,8 @@ namespace g6::net {
         public:
             explicit accept_sender(io::context &context, async_socket &socket, std::stop_token stop_token) noexcept
                 : wsa_operation_base<accept_sender>{context, socket, std::span<std::byte, 0>{}, stop_token} {
-                auto [handle, iocp_skip] =
-                    io::create_socket(socket.type(), context.iocp_handle());
-                accepting_socket_.emplace(context, handle, socket.type(), iocp_skip);
+                auto [handle, iocp_skip] = io::create_socket(socket.protocol(), context.iocp_handle());
+                accepting_socket_.emplace(context, handle, socket.protocol(), iocp_skip);
             }
 
         private:
@@ -533,16 +527,8 @@ namespace g6::net {
                 // We need to call setsockopt() to update the socket state with information
                 // about the connection now that it has been successfully connected.
                 {
-                    const int result =
-                        ::setsockopt(socket_.fd_.get(), SOL_SOCKET, SO_UPDATE_CONNECT_CONTEXT, nullptr, 0);
-                    if (result == SOCKET_ERROR) {
-                        // This shouldn't fail, but just in case it does we fall back to
-                        // setting the remote address as specified in the call to Connect().
-                        //
-                        // Don't really want to throw an exception here since the connection
-                        // has actually been established.
-                        return;
-                    }
+                    using update_connect_context = net::empty_socket_option<SOL_SOCKET, SO_UPDATE_CONNECT_CONTEXT>;
+                    socket_.setopt<update_connect_context>();
                 }
             }
 

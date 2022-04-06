@@ -335,7 +335,7 @@ namespace g6::ssl {
             // update callbacks
             _mbedtls_setup_callbacks();
         }
-        async_socket(async_socket const&other) = delete;
+        async_socket(async_socket const &other) = delete;
         async_socket() = delete;
 
         virtual ~async_socket() noexcept = default;

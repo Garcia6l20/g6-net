@@ -5,7 +5,9 @@
 #include <g6/io/context.hpp>
 
 #include <g6/net/ip_endpoint.hpp>
+#include <g6/net/socket_options.hpp>
 #include <g6/net/socket_protocols.hpp>
+
 
 #include <span>
 
@@ -72,11 +74,35 @@ namespace g6::net {
             return net::ip_endpoint::from_sockaddr(sockaddr_in_);
         }
 
-        socket_protocol type() const noexcept { return type_; }
+        std::optional<net::ip_endpoint> remote_endpoint() const {
+            sockaddr sockaddr_in_{};
+#if G6_OS_WINDOWS
+            int
+#else
+            socklen_t
+#endif
+                sockaddr_in_len = sizeof(sockaddr_in_);
+            if (getpeername(fd_.get(), &sockaddr_in_, &sockaddr_in_len) < 0) { return std::nullopt; }
+            return net::ip_endpoint::from_sockaddr(sockaddr_in_);
+        }
+
+        socket_protocol protocol() const noexcept { return type_; }
 
         void listen(size_t count = 100) {
             if (::listen(fd_.get(), count) < 0) { throw std::system_error(-errno, std::system_category()); }
         }
+
+        template<typename Opt, typename... Args>
+        auto setopt(Args &&...args) const {
+            Opt::set(*this, std::forward<Args>(args)...);
+        }
+
+        template<typename Opt>
+        auto getopt() const {
+            return Opt::get(*this);
+        }
+
+        auto get_fd() const noexcept { return fd_.get(); }
 
         void close_send() {
 #if G6_OS_WINDOWS

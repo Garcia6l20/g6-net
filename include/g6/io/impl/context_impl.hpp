@@ -6,7 +6,7 @@ namespace g6::io {
 
 #include <g6/net/async_socket.hpp>
 
-#include <g6/utils/scope_guard.hpp>
+#include <g6/scope_guard.hpp>
 
 namespace g6::io {
 
@@ -141,7 +141,7 @@ namespace g6::io {
     }
 #endif
 
-    auto tag_invoke(tag<net::open_socket>, io::context &ctx, net::socket_protocol sock_type) {        
+    auto tag_invoke(tag<net::open_socket>, io::context &ctx, net::socket_protocol sock_type) {
         auto [socket, skip_completion] = create_socket(sock_type, ctx.iocp_handle());
         if (socket == INVALID_SOCKET) {
             int errorCode = errno;

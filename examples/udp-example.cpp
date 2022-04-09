@@ -23,7 +23,7 @@ int main() {
                     std::cout << "received " << bytes_received << " bytes from '" << from.to_string()
                               << "': " << std::string_view{reinterpret_cast<char *>(buffer.data()), bytes_received}
                               << '\n';
-                } catch (std::exception &&ex) { std::cerr << "listener failed: " << ex.what() << '\n'; }
+                } catch (std::exception const &ex) { std::cerr << "listener failed: " << ex.what() << '\n'; }
             }(),
             [&]() -> task<void> {
                 try {
@@ -32,7 +32,7 @@ int main() {
                     const char buffer[] = {"hello world !!!"};
                     auto bytes_sent = co_await g6::net::async_send_to(
                         sock, as_bytes(std::span{buffer}), *g6::net::ip_endpoint::from_string("127.0.0.1:4242"));
-                } catch (std::exception &&ex) { std::cerr << "emitter failed: " << ex.what() << '\n'; }
+                } catch (std::exception const &ex) { std::cerr << "emitter failed: " << ex.what() << '\n'; }
             }(),
             async_exec(ctx, stop_source.get_token())}
         .sync_wait();

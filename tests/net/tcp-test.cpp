@@ -24,7 +24,7 @@ TEST_CASE("tcp stop server test", "[g6::net::tcp]") {
                 try {
                     auto [client, client_address] = co_await net::async_accept(sock, stop_accept.get_token());
                     FAIL("Should have been cancelled");
-                } catch (std::system_error &&err) { REQUIRE(err.code() == std::errc::operation_canceled); }
+                } catch (std::system_error const &err) { REQUIRE(err.code() == std::errc::operation_canceled); }
             }(),
             [&]() -> task<void> {
                 co_await schedule_after(ctx, 100ms);

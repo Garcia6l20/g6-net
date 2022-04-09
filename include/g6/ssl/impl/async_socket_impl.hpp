@@ -21,10 +21,7 @@ namespace g6::ssl {
                                certificate, pk,     iocp_skip};
 #else
         int result = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-        if (result < 0) {
-            int errorCode = errno;
-            throw std::system_error{errorCode, std::system_category()};
-        }
+        if (result < 0) { throw std::system_error{-errno, std::system_category()}; }
         ssl::async_socket sock{ctx,         result, net::protos::tcp, ssl::async_socket::connection_mode::server,
                                certificate, pk};
 #endif
@@ -37,8 +34,8 @@ namespace g6::ssl {
 #if G6_OS_WINDOWS
         auto [result, iocp_skip] = io::create_socket(net::protos::tcp, ctx.iocp_handle());
         if (result < 0) { throw std::system_error{static_cast<int>(::WSAGetLastError()), std::system_category()}; }
-        ssl::async_socket sock{ctx,         result,      net::protos::tcp, ssl::async_socket::connection_mode::client,
-                               {},          {},          iocp_skip};
+        ssl::async_socket sock{ctx, result, net::protos::tcp, ssl::async_socket::connection_mode::client,
+                               {},  {},     iocp_skip};
 #else
         int result = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if (result < 0) {

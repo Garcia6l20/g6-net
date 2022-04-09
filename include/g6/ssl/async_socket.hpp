@@ -3,6 +3,7 @@
  */
 #pragma once
 
+#include <fmt/core.h>
 #include <g6/ssl/certificate.hpp>
 #include <g6/ssl/context.hpp>
 #include <g6/ssl/key.hpp>
@@ -14,8 +15,6 @@
 #include <g6/task.hpp>
 
 #include <utility>
-
-#include <spdlog/spdlog.h>
 
 //#define G6_SSL_DEBUG
 
@@ -62,20 +61,19 @@ namespace g6::ssl {
     private:
         static void _mbedtls_debug(void *ctx, int level, const char *file, int line, const char *str) noexcept {
 #ifdef G6_SSL_DEBUG
-            //            auto ssl_ctx = static_cast<mbedtls_ssl_context*>(ctx);
-            static constexpr std::string_view fmt = "{}:{}: {}";
+            static constexpr std::string_view fmt = "[mbedtls-{}] - {}:{}: {}";
             switch (level) {
                 case 0:// shall not happen - no debug
                 case 1:// error
-                    spdlog::error(fmt, file, line, str);
+                    fmt::print(fmt, "error", file, line, str);
                     break;
                 case 3:// informational
-                    spdlog::info(fmt, file, line, str);
+                    fmt::print(fmt, "info", file, line, str);
                     break;
                 case 2:// state change
                 case 4:// verbose
                 default:
-                    spdlog::debug(fmt, file, line, str);
+                    fmt::print(fmt, "debug", file, line, str);
                     break;
             }
 #endif
@@ -168,7 +166,7 @@ namespace g6::ssl {
 
         async_socket(io::context &io_context, socket_handle::handle_t fd, net::socket_protocol proto,
                      connection_mode mode_, std::optional<ssl::certificate> cert, std::optional<ssl::private_key> key,
-                     bool skip_on_success)
+                     bool skip_on_success = false)
             : net::async_socket{io_context, fd, proto, skip_on_success}, mode_{mode_},
               certificate_{std::move(cert)}, key_{std::move(key)}, verify_mode_{mode_ == connection_mode::server
                                                                                     ? peer_verify_mode::none

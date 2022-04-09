@@ -9,6 +9,7 @@
 #include <g6/io/config.hpp>
 #include <stop_token>
 #include <sys/socket.h>
+#include <unistd.h>
 
 #if G6_OS_WINDOWS
 #include <MSWSock.h>
@@ -302,6 +303,25 @@ namespace g6::net {
             msghdr msghdr_{&sockaddr_storage_, sizeof(sockaddr_storage_), &iovec_, 1};
         };
 
+        class send_sender : public io_operation_base<send_sender> {
+        public:
+            bool start_op() noexcept {
+                return context_.io_queue()
+                    .transaction(reinterpret_cast<g6::details::io_message &>(*this))
+                    .send(socket_.get_fd(), buffer_.data(), buffer_.size_bytes())
+                    .commit();
+            }
+
+            auto op_result() noexcept { return size_t(this->byte_count_); }
+
+            explicit send_sender(io::context &context, async_socket &socket, std::span<const std::byte> buffer,
+                                 std::stop_token stop_token) noexcept
+                : io_operation_base<send_sender>{context, socket, stop_token}, buffer_{buffer} {}
+
+        private:
+            std::span<const std::byte> buffer_;
+        };
+
         class recv_from_sender : public io_operation_base<recv_from_sender> {
         public:
             bool start_op() noexcept {
@@ -326,6 +346,74 @@ namespace g6::net {
             sockaddr_storage sockaddr_storage_;
             iovec iovec_;
             msghdr msghdr_{&sockaddr_storage_, sizeof(sockaddr_storage_), &iovec_, 1};
+        };
+
+        class recv_sender : public io_operation_base<recv_sender> {
+        public:
+            bool start_op() noexcept {
+                return context_.io_queue()
+                    .transaction(reinterpret_cast<g6::details::io_message &>(*this))
+                    .recv(socket_.get_fd(), buffer_.data(), buffer_.size_bytes())
+                    .commit();
+            }
+
+            auto op_result() noexcept { return size_t(this->byte_count_); }
+
+            explicit recv_sender(io::context &context, async_socket &socket, std::span<std::byte> buffer,
+                                 std::stop_token stop_token) noexcept
+                : io_operation_base<recv_sender>{context, socket, stop_token}, buffer_{buffer} {}
+
+        private:
+            std::span<std::byte> buffer_;
+        };
+
+        class accept_sender : public io_operation_base<accept_sender> {
+        public:
+            bool start_op() noexcept {
+                return context_.io_queue()
+                    .transaction(reinterpret_cast<g6::details::io_message &>(*this))
+                    .accept(socket_.get_fd(), &sockaddr_storage_, &sockaddr_storage_len_, 0)
+                    .commit();
+            }
+
+            auto op_result() noexcept {
+                return std::make_tuple(
+                    async_socket{context_, int(this->byte_count_), socket_.protocol()},
+                    ip_endpoint::from_sockaddr(reinterpret_cast<const sockaddr &>(sockaddr_storage_)));
+            }
+
+            explicit accept_sender(io::context &context, async_socket &socket, std::stop_token stop_token) noexcept
+                : io_operation_base<accept_sender>{context, socket, stop_token} {}
+
+        private:
+            sockaddr_storage sockaddr_storage_;
+            socklen_t sockaddr_storage_len_ = sizeof(sockaddr_storage_);
+        };
+
+        class connect_sender : public io_operation_base<connect_sender> {
+        public:
+            bool start_op() noexcept {
+                return context_.io_queue()
+                    .transaction(reinterpret_cast<g6::details::io_message &>(*this))
+                    .connect(socket_.get_fd(), &sockaddr_storage_, sockaddr_storage_len_)
+                    .commit();
+            }
+
+            auto op_result() noexcept {
+                return std::make_tuple(
+                    size_t(this->byte_count_),
+                    ip_endpoint::from_sockaddr(reinterpret_cast<const sockaddr &>(sockaddr_storage_)));
+            }
+
+            explicit connect_sender(io::context &context, async_socket &socket, ip_endpoint const &to,
+                                    std::stop_token stop_token) noexcept
+                : io_operation_base<connect_sender>{context, socket, stop_token} {
+                sockaddr_storage_len_ = to.to_sockaddr(sockaddr_storage_);
+            }
+
+        private:
+            sockaddr_storage sockaddr_storage_;
+            size_t sockaddr_storage_len_;
         };
 
 #elif G6_IO_USE_EPOLL_CONTEXT
@@ -585,24 +673,24 @@ namespace g6::net {
 #endif
     }// namespace detail
 
-    // auto tag_invoke(tag<async_accept>, async_socket &socket, std::stop_token stop_token = {}) noexcept {
-    //     return detail::accept_sender{socket.context_, socket, stop_token};
-    // }
+    auto tag_invoke(tag<async_accept>, async_socket &socket, std::stop_token stop_token = {}) noexcept {
+        return detail::accept_sender{socket.context_, socket, stop_token};
+    }
 
-    // auto tag_invoke(tag<async_connect>, async_socket &socket, ip_endpoint const &endpoint,
-    //                 std::stop_token stop_token = {}) noexcept {
-    //     return detail::connect_sender{socket.context_, socket, endpoint, stop_token};
-    // }
+    auto tag_invoke(tag<async_connect>, async_socket &socket, ip_endpoint const &endpoint,
+                    std::stop_token stop_token = {}) noexcept {
+        return detail::connect_sender{socket.context_, socket, endpoint, stop_token};
+    }
 
-    // auto tag_invoke(tag<async_send>, async_socket &socket, std::span<const std::byte> buffer,
-    //                 std::stop_token stop_token = {}) noexcept {
-    //     return detail::send_sender{socket.context_, socket, buffer, stop_token};
-    // }
+    auto tag_invoke(tag<async_send>, async_socket &socket, std::span<const std::byte> buffer,
+                    std::stop_token stop_token = {}) noexcept {
+        return detail::send_sender{socket.context_, socket, buffer, stop_token};
+    }
 
-    // auto tag_invoke(tag<async_recv>, async_socket &socket, std::span<std::byte> buffer,
-    //                 std::stop_token stop_token = {}) noexcept {
-    //     return detail::recv_sender{socket.context_, socket, buffer, stop_token};
-    // }
+    auto tag_invoke(tag<async_recv>, async_socket &socket, std::span<std::byte> buffer,
+                    std::stop_token stop_token = {}) noexcept {
+        return detail::recv_sender{socket.context_, socket, buffer, stop_token};
+    }
 
     auto tag_invoke(tag<async_send_to>, async_socket &socket, std::span<const std::byte> buffer,
                     net::ip_endpoint const &endpoint, std::stop_token stop_token = {}) noexcept {

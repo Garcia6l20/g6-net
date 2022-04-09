@@ -1,5 +1,6 @@
 #include <catch2/catch.hpp>
 
+#include <fmt/core.h>
 #include <g6/io/context.hpp>
 #include <g6/net/ip_endpoint.hpp>
 #include <g6/spawner.hpp>
@@ -12,8 +13,6 @@ using namespace g6;
 using namespace std::chrono_literals;
 
 TEST_CASE("ssl tcp tx/rx test", "[g6::ssl::tcp]") {
-    spdlog::set_level(spdlog::level::debug);
-
     io::context ctx{};
     std::stop_source stop_source{};
 
@@ -27,7 +26,7 @@ TEST_CASE("ssl tcp tx/rx test", "[g6::ssl::tcp]") {
 
     auto server_endpoint = *server.local_endpoint();
 
-    spdlog::info("server endpoint: {}", server_endpoint.to_string());
+    fmt::print("server endpoint: {}\n", server_endpoint.to_string());
 
     auto [server_result, client_result, _] =
         spawner{[&]() -> task<size_t> {
@@ -36,11 +35,11 @@ TEST_CASE("ssl tcp tx/rx test", "[g6::ssl::tcp]") {
                     char buffer[1024]{};
                     try {
                         auto received = co_await net::async_recv(session, as_writable_bytes(std::span{buffer}));
-                        spdlog::info("server received {} bytes", received);
+                        fmt::print("server received {} bytes\n", received);
                         co_await net::async_send(session, as_bytes(std::span{buffer, received}));
                         co_return received;
                     } catch (std::system_error &error) {
-                        spdlog::error("server error: {}", error.what());
+                        fmt::print("server error: {}\n", error.what());
                         co_return std::numeric_limits<size_t>::max();
                     }
                 }(),
@@ -54,7 +53,7 @@ TEST_CASE("ssl tcp tx/rx test", "[g6::ssl::tcp]") {
                     co_await net::async_connect(client, server_endpoint);
                     const char buffer[] = {"hello world !!!"};
                     auto sent = co_await net::async_send(client, as_bytes(std::span{buffer}));
-                    spdlog::info("client sent: {} bytes", sent);
+                    fmt::print("client sent: {} bytes\n", sent);
                     char rx_buffer[64];
                     auto rx_bytes = co_await net::async_recv(client, as_writable_bytes(std::span{rx_buffer}));
                     REQUIRE(std::memcmp(buffer, rx_buffer, rx_bytes) == 0);
@@ -63,5 +62,4 @@ TEST_CASE("ssl tcp tx/rx test", "[g6::ssl::tcp]") {
                 async_exec(ctx, stop_source.get_token())}
             .sync_wait();
     REQUIRE(server_result == client_result);
-    spdlog::debug("done");
 }

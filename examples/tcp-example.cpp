@@ -23,7 +23,7 @@ int main() {
                     auto byte_count = co_await net::async_recv(client, as_writable_bytes(std::span{buffer}));
                     fmt::print("received: {} bytes from {}: {}\n", byte_count, client_address.to_string(),
                                std::string_view{buffer, byte_count});
-                } catch (std::exception &&ex) { fmt::print("server failed: {}\n", ex.what()); }
+                } catch (std::exception const &ex) { fmt::print("server failed: {}\n", ex.what()); }
             }(),
             [&]() -> task<void> {
                 try {
@@ -32,7 +32,7 @@ int main() {
                     co_await net::async_connect(sock, *net::ip_endpoint::from_string("127.0.0.1:4242"));
                     constexpr std::string_view hello{"hello world !!!"};
                     co_await net::async_send(sock, as_bytes(std::span{hello.data(), hello.size()}));
-                } catch (std::exception &&ex) {
+                } catch (std::exception const &ex) {
                     fmt::print("client failed: {}\n", ex.what());
                     stop_source.request_stop();
                 }

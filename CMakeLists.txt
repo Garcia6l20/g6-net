@@ -24,7 +24,6 @@ add_subdirectory(external/g6-coro)
 
 find_package(MbedTLS REQUIRED)
 find_package(fmt REQUIRED)
-find_package(spdlog REQUIRED)
 
 ##
 ##
@@ -44,7 +43,7 @@ add_library(${PROJECT_NAME}
   )
 add_library(g6::net ALIAS ${PROJECT_NAME})
 target_include_directories(${PROJECT_NAME} PUBLIC include)
-target_link_libraries(${PROJECT_NAME} PUBLIC g6::coro fmt::fmt spdlog::spdlog MbedTLS::MbedTLS)
+target_link_libraries(${PROJECT_NAME} PUBLIC g6::coro fmt::fmt MbedTLS::MbedTLS)
 
 option(G6_NO_IO_URING "Disable IO uring as default context" OFF)
 if (G6_NO_IO_URING)

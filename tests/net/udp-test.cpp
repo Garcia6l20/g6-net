@@ -1,5 +1,8 @@
+#include "g6/cpo/scheduler.hpp"
 #include <catch2/catch.hpp>
 
+#include <cstddef>
+#include <fmt/core.h>
 #include <fmt/format.h>
 
 #include <g6/io/context.hpp>
@@ -71,7 +74,9 @@ public:
 
     auto get_token() const noexcept { return stop_source_.get_token(); }
     void request_stop() noexcept {
-        if (++count_ >= threshold_) { stop_source_.request_stop(); }
+        if (++count_ >= threshold_) {//
+            stop_source_.request_stop();
+        }
     }
     auto &operator++() noexcept {
         ++threshold_;
@@ -79,6 +84,8 @@ public:
     }
 
     auto stop_requested() const noexcept { return stop_source_.stop_requested(); }
+
+    auto threshold() const noexcept { return threshold_; }
 
 private:
     std::stop_source stop_source_;
@@ -114,8 +121,8 @@ TEST_CASE("udp reuse address", "[g6::net::udp]") {
                     const auto ep = *net::ip_endpoint::from_string("127.0.0.1:4242");
                     const auto bytes = as_bytes(std::span{buffer});
                     size_t bytes_sent = 0;
-                    while (!stop_source.stop_requested()) {
-                        co_await schedule(ctx);
+                    for (size_t ii = 0; ii < stop_source.threshold(); ++ii) {
+                        co_await schedule_after(ctx, 10ms);
                         bytes_sent = co_await net::async_send_to(sock, bytes, ep);
                         fmt::print("{} bytes sent...\n", bytes_sent);
                     }

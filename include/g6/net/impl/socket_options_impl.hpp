@@ -1,7 +1,18 @@
-#ifndef G6_NET_IMPL_SOCKET_OPTION_HPP_
-#define G6_NET_IMPL_SOCKET_OPTION_HPP_
+#pragma once
+
+#include <g6/net/socket_options.hpp>
+#include <unistd.h>
 
 namespace g6::net {
+
+    namespace details {
+#if G6_OS_WINDOWS
+        using sock_opt_size_t = int;
+#else
+        using sock_opt_size_t = socklen_t;
+#endif
+    }// namespace details
+
     template<int so_level, int opt_name, typename UserT, typename ImplT>
     void simple_scoket_option<so_level, opt_name, UserT, ImplT>::set_impl(auto fd, UserT value) {
         auto impl_value = static_cast<ImplT>(value);
@@ -13,7 +24,7 @@ namespace g6::net {
     template<int so_level, int opt_name, typename UserT, typename ImplT>
     UserT simple_scoket_option<so_level, opt_name, UserT, ImplT>::get_impl(auto fd) {
         ImplT impl_value{};
-        int impl_size = sizeof(impl_value);
+        details::sock_opt_size_t impl_size = sizeof(impl_value);
         if (getsockopt(fd, so_level, opt_name, reinterpret_cast<char *>(&impl_value), &impl_size) < 0) {
             using namespace std::literals;
             throw std::system_error{errno, std::system_category()};
@@ -33,5 +44,3 @@ namespace g6::net {
         std::abort();
     }
 }// namespace g6::net
-
-#endif// G6_NET_IMPL_SOCKET_OPTION_HPP_

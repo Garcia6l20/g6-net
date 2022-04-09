@@ -1,5 +1,13 @@
 #pragma once
 
+#include <g6/config.hpp>
+
+#if G6_OS_LINUX
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <sys/socket.h>
+#endif
+
 namespace g6::net {
 
     struct socket_protocol {

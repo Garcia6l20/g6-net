@@ -1,8 +1,14 @@
 #pragma once
 
+#include "g6/io_context.hpp"
+#include "g6/linux/uring_queue.hpp"
+#include "g6/net/ip_endpoint.hpp"
+#include <cstddef>
 #include <g6/net/async_socket.hpp>
 
 #include <g6/io/config.hpp>
+#include <stop_token>
+#include <sys/socket.h>
 
 #if G6_OS_WINDOWS
 #include <MSWSock.h>
@@ -13,51 +19,83 @@
 namespace g6::net {
     namespace detail {
 
-#if G6_IO_USE_IO_URING_CONTEXT
-        class accept_sender {
-            template<typename Receiver>
-            struct operation : io::context::io_operation_base<IORING_OP_ACCEPT, Receiver, operation> {
-                friend io::context;
+        template<typename Operation>
+        class io_operation_base : protected operation_base {
+        public:
+            bool await_ready() const noexcept { return false; }
+            auto await_suspend(std::coroutine_handle<> awaiter) {
+                awaiter_ = awaiter;
+#if G6_OS_WINDOWS
+                const bool skipCompletionOnSuccess = socket_.skip_completion_;
+                auto result = static_cast<Operation &>(*this).start_op();
+                if (result == SOCKET_ERROR) {
+                    int errorCode = ::WSAGetLastError();
+                    if (errorCode != WSA_IO_PENDING) {
+                        // Failed synchronously.
+                        error_code_ = errorCode;
+                        return false;
+                    }
+                } else if (skipCompletionOnSuccess) {
+                    // Completed synchronously, no completion event will be posted to the IOCP.
+                    error_code_ = ERROR_SUCCESS;
+                    return false;
+                }
 
-                explicit operation(accept_sender &sender, Receiver &&r)
-                    : io::context::io_operation_base<IORING_OP_ACCEPT, Receiver, operation>{sender, (Receiver &&) r} {}
-                auto get_io_data() noexcept {
-                    return std::tuple{reinterpret_cast<std::byte *>(&sockaddr_storage_), 0,
-                                      reinterpret_cast<uint64_t>(&socklen_)};
-                }
-                auto get_result() noexcept {
-                    return std::make_tuple(
-                        async_socket{this->context_, this->result_},
-                        net::ip_endpoint::from_sockaddr(*reinterpret_cast<const sockaddr *>(&sockaddr_storage_)));
-                }
-                socklen_t socklen_{sizeof(sockaddr_storage)};
-                sockaddr_storage sockaddr_storage_{};
-            };
-            template<auto, typename, template<class> typename>
-            friend class io::context::io_operation_base;
+                // Operation will complete asynchronously.
+                return true;
+#else
+                return static_cast<Operation &>(*this).start_op();
+#endif
+            }
+
+            auto await_resume() {
+                if (error_code_ != 0) { throw std::system_error{error_code_, std::system_category()}; }
+                return static_cast<Operation &>(*this).op_result();
+            }
+
+            explicit io_operation_base(io::context &context, async_socket &socket, std::stop_token stop_token) noexcept
+                : context_{context}, socket_{socket},
+                  on_stop_requested_{stop_token, [this]() noexcept {
+#if G6_OS_WINDOWS
+                                         (void) ::CancelIoEx(reinterpret_cast<HANDLE>(socket_.fd_.get()),
+                                                             reinterpret_cast<_OVERLAPPED *>(this));
+                                         static_cast<Operation &>(*this).op_cancelled();
+#else
+                                         (void)context_.io_queue().transaction(reinterpret_cast<g6::details::io_message&>(*this)).cancel().commit();
+#endif
+                                     }} {
+            }
+
+        protected:
+            io::context &context_;
+            async_socket &socket_;
+            std::stop_callback<std::function<void()>> on_stop_requested_;
+        };
+
+#if G6_IO_USE_IO_URING_CONTEXT
+#if 0
+        class accept_operation : operation_base {
+            friend io::context;
+            auto get_io_data() noexcept {
+                return std::tuple{reinterpret_cast<std::byte *>(&sockaddr_storage_), 0,
+                                  reinterpret_cast<uint64_t>(&socklen_)};
+            }
+            auto get_result() noexcept {
+                return std::make_tuple(
+                    async_socket{this->context_, this->result_},
+                    net::ip_endpoint::from_sockaddr(*reinterpret_cast<const sockaddr *>(&sockaddr_storage_)));
+            }
+            socklen_t socklen_{sizeof(sockaddr_storage)};
+            sockaddr_storage sockaddr_storage_{};
 
         public:
-            // Produces number of bytes read.
-            template<template<typename...> class Variant, template<typename...> class Tuple>
-            using value_types = Variant<Tuple<std::tuple<async_socket, net::ip_endpoint>>>;
+            explicit accept_operation(io::context &context, int fd) noexcept
+                : operation_base{}, context_{context}, socket_{socket} {}
 
-            // Note: Only case it might complete with exception_ptr is if the
-            // receiver's set_value() exits with an exception.
-            template<template<typename...> class Variant>
-            using error_types = Variant<std::error_code, std::exception_ptr>;
-
-            static constexpr bool sends_done = true;
-
-            explicit accept_sender(io::context &context, int fd) noexcept : context_{context}, fd_{fd} {}
-
-            template<typename Receiver>
-            auto connect(Receiver &&r) && {
-                return operation<Receiver>{*this, (Receiver &&) r};
-            }
 
         private:
             io::context &context_;
-            int fd_;
+            async_socket &socket_;
         };
 
         class connect_sender {
@@ -238,54 +276,58 @@ namespace g6::net {
             int fd_;
             span<const std::byte> buffer_;
         };
-
-        class send_to_sender {
-            template<typename Receiver>
-            struct operation : io::context::io_operation_base<IORING_OP_SENDMSG, Receiver, operation> {
-                friend io::context;
-
-                explicit operation(send_to_sender &sender, Receiver &&r)
-                    : io::context::io_operation_base<IORING_OP_SENDMSG, Receiver, operation>{sender, (Receiver &&) r} {
-                    iovec_.iov_base = const_cast<std::byte *>(sender.buffer_.data());
-                    iovec_.iov_len = sender.buffer_.size();
-                    msghdr_.msg_namelen = sender.to_.to_sockaddr(sockaddr_storage_);
-                }
-                auto get_io_data() noexcept { return std::tuple{&msghdr_, 1, 0}; }
-                auto get_result() noexcept { return size_t(this->result_); }
-                sockaddr_storage sockaddr_storage_;
-                iovec iovec_;
-                msghdr msghdr_{&sockaddr_storage_, sizeof(sockaddr_storage_), &iovec_, 1};
-            };
-            template<auto, typename, template<class> typename>
-            friend class io::context::io_operation_base;
-
+#endif
+        class send_to_sender : public io_operation_base<send_to_sender> {
         public:
-            // Produces number of bytes read.
-            template<template<typename...> class Variant, template<typename...> class Tuple>
-            using value_types = Variant<Tuple<size_t>>;
+            bool start_op() noexcept {
+                return context_.io_queue()
+                    .transaction(reinterpret_cast<g6::details::io_message &>(*this))
+                    .sendmsg(socket_.get_fd(), msghdr_)
+                    .commit();
+            }
 
-            // Note: Only case it might complete with exception_ptr is if the
-            // receiver's set_value() exits with an exception.
-            template<template<typename...> class Variant>
-            using error_types = Variant<std::error_code, std::exception_ptr>;
+            auto op_result() noexcept { return size_t(this->byte_count_); }
 
-            static constexpr bool sends_done = true;
-
-            explicit send_to_sender(io::context &context, int fd, const net::ip_endpoint &endpoint,
-                                    span<const std::byte> buffer) noexcept
-                : context_{context}, fd_{fd}, buffer_{buffer}, to_{endpoint} {}
-
-            template<typename Receiver>
-            auto connect(Receiver &&r) && {
-                return operation<Receiver>{*this, (Receiver &&) r};
+            explicit send_to_sender(io::context &context, async_socket &socket, const net::ip_endpoint &endpoint,
+                                    std::span<const std::byte> buffer, std::stop_token stop_token) noexcept
+                : io_operation_base<send_to_sender>{context, socket, stop_token}, iovec_{const_cast<std::byte *>(
+                                                                                             buffer.data()),
+                                                                                         buffer.size_bytes()} {
+                endpoint.to_sockaddr(sockaddr_storage_);
             }
 
         private:
-            io::context &context_;
-            int fd_;
-            span<const std::byte> buffer_;
-            net::ip_endpoint to_;
+            sockaddr_storage sockaddr_storage_;
+            iovec iovec_;
+            msghdr msghdr_{&sockaddr_storage_, sizeof(sockaddr_storage_), &iovec_, 1};
         };
+
+        class recv_from_sender : public io_operation_base<recv_from_sender> {
+        public:
+            bool start_op() noexcept {
+                return context_.io_queue()
+                    .transaction(reinterpret_cast<g6::details::io_message &>(*this))
+                    .recvmsg(socket_.get_fd(), msghdr_)
+                    .commit();
+            }
+
+            auto op_result() noexcept {
+                return std::make_tuple(
+                    size_t(this->byte_count_),
+                    ip_endpoint::from_sockaddr(reinterpret_cast<const sockaddr &>(sockaddr_storage_)));
+            }
+
+            explicit recv_from_sender(io::context &context, async_socket &socket, std::span<std::byte> buffer,
+                                      std::stop_token stop_token) noexcept
+                : io_operation_base<recv_from_sender>{context, socket, stop_token}, iovec_{buffer.data(),
+                                                                                           buffer.size_bytes()} {}
+
+        private:
+            sockaddr_storage sockaddr_storage_;
+            iovec iovec_;
+            msghdr msghdr_{&sockaddr_storage_, sizeof(sockaddr_storage_), &iovec_, 1};
+        };
+
 #elif G6_IO_USE_EPOLL_CONTEXT
 #error "not implemented"
 #else// G6_IO_USE_IOCP_CONTEXT
@@ -543,32 +585,24 @@ namespace g6::net {
 #endif
     }// namespace detail
 
-    auto tag_invoke(tag<async_accept>, async_socket &socket, std::stop_token stop_token = {}) noexcept {
-        return detail::accept_sender{socket.context_, socket, stop_token};
-    }
-
-    auto tag_invoke(tag<async_connect>, async_socket &socket, ip_endpoint const &endpoint,
-                    std::stop_token stop_token = {}) noexcept {
-        return detail::connect_sender{socket.context_, socket, endpoint, stop_token};
-    }
-
-    // auto tag_invoke(tag<async_connect>, async_socket &socket, ip_endpoint &&endpoint) noexcept {
-    //     return detail::connect_sender{socket.context_, socket.fd_.get(), std::forward<ip_endpoint>(endpoint)};
+    // auto tag_invoke(tag<async_accept>, async_socket &socket, std::stop_token stop_token = {}) noexcept {
+    //     return detail::accept_sender{socket.context_, socket, stop_token};
     // }
 
-    // auto tag_invoke(tag<async_connect>, auto &context, int fd, ip_endpoint const &endpoint) noexcept {
-    //     return detail::connect_sender{context, fd, endpoint};
+    // auto tag_invoke(tag<async_connect>, async_socket &socket, ip_endpoint const &endpoint,
+    //                 std::stop_token stop_token = {}) noexcept {
+    //     return detail::connect_sender{socket.context_, socket, endpoint, stop_token};
     // }
 
-    auto tag_invoke(tag<async_send>, async_socket &socket, std::span<const std::byte> buffer,
-                    std::stop_token stop_token = {}) noexcept {
-        return detail::send_sender{socket.context_, socket, buffer, stop_token};
-    }
+    // auto tag_invoke(tag<async_send>, async_socket &socket, std::span<const std::byte> buffer,
+    //                 std::stop_token stop_token = {}) noexcept {
+    //     return detail::send_sender{socket.context_, socket, buffer, stop_token};
+    // }
 
-    auto tag_invoke(tag<async_recv>, async_socket &socket, std::span<std::byte> buffer,
-                    std::stop_token stop_token = {}) noexcept {
-        return detail::recv_sender{socket.context_, socket, buffer, stop_token};
-    }
+    // auto tag_invoke(tag<async_recv>, async_socket &socket, std::span<std::byte> buffer,
+    //                 std::stop_token stop_token = {}) noexcept {
+    //     return detail::recv_sender{socket.context_, socket, buffer, stop_token};
+    // }
 
     auto tag_invoke(tag<async_send_to>, async_socket &socket, std::span<const std::byte> buffer,
                     net::ip_endpoint const &endpoint, std::stop_token stop_token = {}) noexcept {

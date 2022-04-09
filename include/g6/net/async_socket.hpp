@@ -42,9 +42,13 @@ namespace g6::net {
 #endif
 
     public:
+#if G6_OS_WINDOWS
         using socket_handle = safe_handle<SOCKET, closesocket, INVALID_SOCKET>;
+#else
+        using socket_handle = safe_handle<int, ::close, -1>;
+#endif
         explicit async_socket(io::context &context, socket_handle::handle_t fd, socket_protocol type,
-                              bool skip_completion) noexcept
+                              bool skip_completion = false) noexcept
             : context_{context}, fd_{fd}, type_{type}, skip_completion_{skip_completion} {}
 
         async_socket(async_socket &&) = default;
@@ -165,9 +169,7 @@ namespace g6::net {
         socket_handle fd_;
         io::context &context_;
         socket_protocol type_;
-#if G6_OS_WINDOWS
         bool skip_completion_;
-#endif
     };
 
 }// namespace g6::net

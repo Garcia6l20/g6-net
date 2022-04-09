@@ -1,8 +1,10 @@
 #include <g6/io/context.hpp>
 
+#if G6_OS_WINDOWS
 namespace g6::io {
     std::tuple<SOCKET, bool> create_socket(net::socket_protocol type, HANDLE ioCompletionPort);
 }
+#endif
 
 #include <g6/net/async_socket.hpp>
 
@@ -142,11 +144,17 @@ namespace g6::io {
 #endif
 
     auto tag_invoke(tag<net::open_socket>, io::context &ctx, net::socket_protocol sock_type) {
+#if G6_OS_WINDOWS
         auto [socket, skip_completion] = create_socket(sock_type, ctx.iocp_handle());
         if (socket == INVALID_SOCKET) {
-            int errorCode = errno;
+            int errorCode = ::WSAGetLastError();
             throw std::system_error{errorCode, std::system_category()};
         }
         return net::async_socket{ctx, socket, sock_type, skip_completion};
+#else
+        auto socket = ::socket(sock_type.domain, sock_type.type, sock_type.proto);
+        if (socket < 0) { throw std::system_error{-errno, std::system_category()}; }
+        return net::async_socket{ctx, socket, sock_type};
+#endif
     }
 }// namespace g6::io

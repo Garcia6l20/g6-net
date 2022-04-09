@@ -3,7 +3,10 @@
 
 #include <cstring>
 
+#include <unistd.h>
 #include <utility>
+
+#include <g6/config.hpp>
 
 #if G6_OS_WINDOWS
 #include <WinSock2.h>
@@ -54,8 +57,12 @@ namespace g6::net {
 
 namespace g6::net::socket_options {
     using reuse_address = simple_scoket_option<SOL_SOCKET, SO_REUSEADDR>;
+
+#if G6_OS_WINDOWS
     using reuse_address_ex = simple_scoket_option<SOL_SOCKET, SO_EXCLUSIVEADDRUSE>;
-    //using reuse_port = simple_option<SOL_SOCKET, SO_REUSEPORT>;
+#else
+    using reuse_port = simple_scoket_option<SOL_SOCKET, SO_REUSEPORT>;
+#endif
 
     namespace ip {
         class membership {

@@ -4,6 +4,7 @@ catch2/2.13.8
 [requires]
 fmt/8.1.1
 mbedtls/2.25.0
+qt/6.2.4
 
 [generators]
 cmake_find_package

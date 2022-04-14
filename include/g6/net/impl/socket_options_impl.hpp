@@ -1,7 +1,6 @@
 #pragma once
 
 #include <g6/net/socket_options.hpp>
-#include <unistd.h>
 
 namespace g6::net {
 

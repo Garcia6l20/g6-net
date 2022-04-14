@@ -1,20 +1,23 @@
 #pragma once
 
-#include "g6/io_context.hpp"
-#include "g6/linux/uring_queue.hpp"
-#include "g6/net/ip_endpoint.hpp"
-#include <cstddef>
-#include <g6/net/async_socket.hpp>
 
 #include <g6/io/config.hpp>
+#include <g6/io_context.hpp>
+#include <g6/net/async_socket.hpp>
+#include <g6/net/ip_endpoint.hpp>
+
+#include <cstddef>
+#include <functional>
 #include <stop_token>
-#include <sys/socket.h>
-#include <unistd.h>
 
 #if G6_OS_WINDOWS
 #include <MSWSock.h>
 #else
+#include <g6/linux/uring_queue.hpp>
+
 #include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <unistd.h>
 #endif
 
 namespace g6::net {
@@ -673,36 +676,36 @@ namespace g6::net {
 #endif
     }// namespace detail
 
-    auto tag_invoke(tag<async_accept>, async_socket &socket, std::stop_token stop_token = {}) noexcept {
+    inline auto tag_invoke(tag<async_accept>, async_socket &socket, std::stop_token stop_token = {}) noexcept {
         return detail::accept_sender{socket.context_, socket, stop_token};
     }
 
-    auto tag_invoke(tag<async_connect>, async_socket &socket, ip_endpoint const &endpoint,
-                    std::stop_token stop_token = {}) noexcept {
+    inline auto tag_invoke(tag<async_connect>, async_socket &socket, ip_endpoint const &endpoint,
+                           std::stop_token stop_token = {}) noexcept {
         return detail::connect_sender{socket.context_, socket, endpoint, stop_token};
     }
 
-    auto tag_invoke(tag<async_send>, async_socket &socket, std::span<const std::byte> buffer,
-                    std::stop_token stop_token = {}) noexcept {
+    inline auto tag_invoke(tag<async_send>, async_socket &socket, std::span<const std::byte> buffer,
+                           std::stop_token stop_token = {}) noexcept {
         return detail::send_sender{socket.context_, socket, buffer, stop_token};
     }
 
-    auto tag_invoke(tag<async_recv>, async_socket &socket, std::span<std::byte> buffer,
-                    std::stop_token stop_token = {}) noexcept {
+    inline auto tag_invoke(tag<async_recv>, async_socket &socket, std::span<std::byte> buffer,
+                           std::stop_token stop_token = {}) noexcept {
         return detail::recv_sender{socket.context_, socket, buffer, stop_token};
     }
 
-    auto tag_invoke(tag<async_send_to>, async_socket &socket, std::span<const std::byte> buffer,
-                    net::ip_endpoint const &endpoint, std::stop_token stop_token = {}) noexcept {
+    inline auto tag_invoke(tag<async_send_to>, async_socket &socket, std::span<const std::byte> buffer,
+                           net::ip_endpoint const &endpoint, std::stop_token stop_token = {}) noexcept {
         return detail::send_to_sender{socket.context_, socket, endpoint, buffer, stop_token};
     }
 
-    auto tag_invoke(tag<async_recv_from>, async_socket &socket, std::span<std::byte> buffer,
-                    std::stop_token stop_token = {}) noexcept {
+    inline auto tag_invoke(tag<async_recv_from>, async_socket &socket, std::span<std::byte> buffer,
+                           std::stop_token stop_token = {}) noexcept {
         return detail::recv_from_sender{socket.context_, socket, buffer, stop_token};
     }
 
-    auto tag_invoke(tag<pending_bytes>, async_socket &socket) noexcept {
+    inline auto tag_invoke(tag<pending_bytes>, async_socket &socket) noexcept {
 #if G6_OS_WINDOWS
         unsigned long count = 0;
         DWORD out_sz = 0;
@@ -713,7 +716,7 @@ namespace g6::net {
 #endif
         return count;
     }
-    auto tag_invoke(tag<has_pending_data>, async_socket &socket) noexcept { return pending_bytes(socket) > 0; }
+    inline auto tag_invoke(tag<has_pending_data>, async_socket &socket) noexcept { return pending_bytes(socket) > 0; }
 
     // template<class IOContext2>
     // auto tag_invoke(tag<net::open_socket>, IOContext2 &ctx, net::detail::tags::tcp const &,
@@ -728,4 +731,22 @@ namespace g6::net {
     // auto tag_invoke(tag<net::open_socket>, IOContext2 &ctx, net::detail::tags::tcp const &) {
     //     return net::open_socket(ctx, AF_INET, SOCK_STREAM);
     // }
+
 }// namespace g6::net
+
+namespace g6::io {
+    inline auto tag_invoke(tag<net::open_socket>, io::context &ctx, net::socket_protocol sock_type) {
+#if G6_OS_WINDOWS
+        auto [socket, skip_completion] = create_socket(sock_type, ctx.iocp_handle());
+        if (socket == INVALID_SOCKET) {
+            int errorCode = ::WSAGetLastError();
+            throw std::system_error{errorCode, std::system_category()};
+        }
+        return net::async_socket{ctx, socket, sock_type, skip_completion};
+#else
+        auto socket = ::socket(sock_type.domain, sock_type.type, sock_type.proto);
+        if (socket < 0) { throw std::system_error{-errno, std::system_category()}; }
+        return net::async_socket{ctx, socket, sock_type};
+#endif
+    }
+}// namespace g6::io

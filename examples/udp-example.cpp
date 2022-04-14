@@ -3,6 +3,7 @@
 #include <g6/io/context.hpp>
 #include <g6/net/async_socket.hpp>
 #include <g6/net/ip_endpoint.hpp>
+#include <g6/scope_guard.hpp>
 
 #include <iostream>
 
@@ -15,7 +16,7 @@ int main() {
     spawner{[&]() -> task<void> {
                 scope_guard _ = [&]() noexcept { stop_source.request_stop(); };
                 try {
-                    auto sock = net::open_socket(ctx, net::protos::udp);
+                    auto sock = net::open_socket(ctx, net::proto::udp);
                     std::array<std::byte, 64> buffer{};
                     sock.bind(*net::ip_endpoint::from_string("127.0.0.1:4242"));
                     auto [bytes_received, from] =
@@ -27,7 +28,7 @@ int main() {
             }(),
             [&]() -> task<void> {
                 try {
-                    auto sock = net::open_socket(ctx, net::protos::udp);
+                    auto sock = net::open_socket(ctx, net::proto::udp);
                     sock.bind(*net::ip_endpoint::from_string("127.0.0.1:2424"));
                     const char buffer[] = {"hello world !!!"};
                     auto bytes_sent = co_await g6::net::async_send_to(

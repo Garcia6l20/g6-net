@@ -20,7 +20,9 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake ${CMAKE_BINARY_DIR})
 ##
 ## Dependencies
 ##
-add_subdirectory(external/g6-coro)
+if (NOT TARGET g6-coro)
+  add_subdirectory(external/g6-coro)
+endif()
 
 find_package(MbedTLS REQUIRED)
 find_package(fmt REQUIRED)
@@ -32,6 +34,8 @@ find_package(fmt REQUIRED)
 file(GLOB_RECURSE ${PROJECT_NAME}_headers include/)
 
 add_library(${PROJECT_NAME}
+
+  src/context.cpp
   src/ip_address.cpp
   src/ip_endpoint.cpp
   src/ipv4_address.cpp

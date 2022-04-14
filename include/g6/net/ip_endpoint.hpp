@@ -7,6 +7,7 @@
 #include <g6/config.hpp>
 
 #if G6_OS_WINDOWS
+#define NOMINMAX
 #include <WinSock2.h>
 #include <ws2ipdef.h>
 #else

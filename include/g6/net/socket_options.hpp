@@ -3,16 +3,17 @@
 
 #include <cstring>
 
-#include <unistd.h>
 #include <utility>
 
 #include <g6/config.hpp>
 
 #if G6_OS_WINDOWS
+#define NOMINMAX
 #include <WinSock2.h>
 #else
 #include <netdb.h>
 #include <sys/socket.h>
+#include <unistd.h>
 #endif
 
 #include <g6/net/ip_address.hpp>

@@ -22,7 +22,7 @@ TEST_CASE("udp tx/rx test", "[g6::net::udp]") {
     auto [rx_bytes, tx_bytes, _] =
         spawner{[&]() -> task<size_t> {
                     scope_guard _ = [&]() noexcept { stop_source.request_stop(); };
-                    auto sock = net::open_socket(ctx, net::protos::udp);
+                    auto sock = net::open_socket(ctx, net::proto::udp);
                     std::array<std::byte, 64> buffer{};
                     sock.bind(*net::ip_endpoint::from_string("127.0.0.1:4242"));
                     auto [bytes_received, from] = co_await net::async_recv_from(
@@ -30,7 +30,7 @@ TEST_CASE("udp tx/rx test", "[g6::net::udp]") {
                     co_return bytes_received;
                 }(),
                 [&]() -> task<size_t> {
-                    auto sock = net::open_socket(ctx, net::protos::udp);
+                    auto sock = net::open_socket(ctx, net::proto::udp);
                     const char buffer[] = {"hello world !!!"};
                     co_await schedule_after(ctx, 10ms);
                     auto bytes_sent = co_await net::async_send_to(sock, as_bytes(std::span{buffer}),
@@ -51,7 +51,7 @@ TEST_CASE("udp has_pending_data test", "[g6::net::udp]") {
 
     spawner{[&]() -> task<void> {
                 scope_guard _ = [&]() noexcept { stop_source.request_stop(); };
-                auto sock = net::open_socket(ctx, net::protos::udp);
+                auto sock = net::open_socket(ctx, net::proto::udp);
                 std::array<std::byte, 64> buffer{};
                 sock.bind(*net::ip_endpoint::from_string("127.0.0.1:4242"));
                 REQUIRE_FALSE(net::has_pending_data(sock));
@@ -59,7 +59,7 @@ TEST_CASE("udp has_pending_data test", "[g6::net::udp]") {
                 REQUIRE(net::pending_bytes(sock) == 16);
             }(),
             [&]() -> task<void> {
-                auto sock = net::open_socket(ctx, net::protos::udp);
+                auto sock = net::open_socket(ctx, net::proto::udp);
                 const char buffer[] = {"hello world !!!"};
                 auto bytes_sent = co_await net::async_send_to(sock, std::as_bytes(std::span{buffer}),
                                                               *net::ip_endpoint::from_string("127.0.0.1:4242"));
@@ -101,7 +101,7 @@ TEST_CASE("udp reuse address", "[g6::net::udp]") {
     auto listener = [&](size_t id) -> task<size_t> {
         scope_guard _ = [&]() noexcept { stop_source.request_stop(); };
         ++stop_source;
-        auto sock = net::open_socket(ctx, net::protos::udp);
+        auto sock = net::open_socket(ctx, net::proto::udp);
         sock.setopt<net::socket_options::reuse_address>(true);
         REQUIRE(sock.getopt<net::socket_options::reuse_address>() == true);
         sock.bind(*net::ip_endpoint::from_string("127.0.0.1:4242"));
@@ -116,7 +116,7 @@ TEST_CASE("udp reuse address", "[g6::net::udp]") {
     auto [rx_bytes1, rx_bytes2, tx_bytes, _] =
         spawner{listener(1), listener(2),
                 [&]() -> task<size_t> {
-                    auto sock = net::open_socket(ctx, net::protos::udp);
+                    auto sock = net::open_socket(ctx, net::proto::udp);
                     const char buffer[] = {"hello world !!!"};
                     const auto ep = *net::ip_endpoint::from_string("127.0.0.1:4242");
                     const auto bytes = as_bytes(std::span{buffer});
@@ -144,7 +144,7 @@ TEST_CASE("udp multicast", "[g6::net::udp]") {
     auto listener = [&]() -> task<size_t> {
         scope_guard _ = [&]() noexcept { stop_source.request_stop(); };
         ++stop_source;
-        auto sock = net::open_socket(ctx, net::protos::udp);
+        auto sock = net::open_socket(ctx, net::proto::udp);
         sock.setopt<net::socket_options::reuse_address>(true);
         sock.bind(*net::ip_endpoint::from_string("0.0.0.0:4242"));
         sock.setopt<net::socket_options::ip::add_membership>(net::ip_address::from_string("224.0.0.1")->to_ipv4(),
@@ -160,7 +160,7 @@ TEST_CASE("udp multicast", "[g6::net::udp]") {
 
     auto [rx_bytes, tx_bytes, _] = spawner{listener(),
                                            [&]() -> task<size_t> {
-                                               auto sock = net::open_socket(ctx, net::protos::udp);
+                                               auto sock = net::open_socket(ctx, net::proto::udp);
                                                const char buffer[] = {"hello world !!!"};
                                                const auto ep = *net::ip_endpoint::from_string("224.0.0.1:4242");
                                                const auto bytes = as_bytes(std::span{buffer});

@@ -1,6 +1,7 @@
 
 #include <g6/io/context.hpp>
 #include <g6/net/async_socket.hpp>
+#include <g6/scope_guard.hpp>
 #include <g6/spawner.hpp>
 
 #include <fmt/format.h>
@@ -15,7 +16,7 @@ int main() {
     spawner{[&]() -> task<void> {
                 scope_guard _ = [&]() noexcept { stop_source.request_stop(); };
                 try {
-                    auto sock = net::open_socket(ctx, net::protos::tcp);
+                    auto sock = net::open_socket(ctx, net::proto::tcp);
                     sock.bind(*net::ip_endpoint::from_string("127.0.0.1:4242"));
                     sock.listen();
                     auto [client, client_address] = co_await net::async_accept(sock);
@@ -27,7 +28,7 @@ int main() {
             }(),
             [&]() -> task<void> {
                 try {
-                    auto sock = net::open_socket(ctx, net::protos::tcp);
+                    auto sock = net::open_socket(ctx, net::proto::tcp);
                     sock.bind(*net::ip_endpoint::from_string("127.0.0.1:0"));
                     co_await net::async_connect(sock, *net::ip_endpoint::from_string("127.0.0.1:4242"));
                     constexpr std::string_view hello{"hello world !!!"};

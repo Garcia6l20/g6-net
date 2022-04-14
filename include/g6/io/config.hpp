@@ -18,4 +18,4 @@
 #define G6_IO_USE_IOCP_CONTEXT true
 #endif
 
-#endif // G6_IO_CONFIG_HPP_
+#endif// G6_IO_CONFIG_HPP_

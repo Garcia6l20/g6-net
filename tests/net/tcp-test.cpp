@@ -5,6 +5,7 @@
 #include <g6/io/context.hpp>
 #include <g6/net/async_socket.hpp>
 #include <g6/net/ip_endpoint.hpp>
+#include <g6/scope_guard.hpp>
 #include <g6/spawner.hpp>
 
 
@@ -18,7 +19,7 @@ TEST_CASE("tcp stop server test", "[g6::net::tcp]") {
 
     spawner{[&]() -> task<void> {
                 auto _ = scope_guard{[&] { stop_run.request_stop(); }};
-                auto sock = net::open_socket(ctx, net::protos::tcp);
+                auto sock = net::open_socket(ctx, net::proto::tcp);
                 sock.bind(*net::ip_endpoint::from_string("127.0.0.1:0"));
                 sock.listen();
                 try {
@@ -42,7 +43,7 @@ TEST_CASE("tcp tx/rx test", "[g6::net::tcp]") {
 
     auto [received, sent, _] =
         spawner{[&]() -> task<size_t> {
-                    auto sock = net::open_socket(ctx, net::protos::tcp);
+                    auto sock = net::open_socket(ctx, net::proto::tcp);
                     sock.bind(server_endpoint);
                     sock.listen();
                     auto [client, client_address] = co_await net::async_accept(sock);
@@ -55,7 +56,7 @@ TEST_CASE("tcp tx/rx test", "[g6::net::tcp]") {
                 }(),
                 [&]() -> task<size_t> {
                     scope_guard _ = [&]() noexcept { stop_source.request_stop(); };
-                    auto sock = net::open_socket(ctx, net::protos::tcp);
+                    auto sock = net::open_socket(ctx, net::proto::tcp);
                     sock.bind(*net::ip_endpoint::from_string("127.0.0.1:0"));
                     co_await net::async_connect(sock, server_endpoint);
                     fmt::print("client connected (local: {}, remote: {})\n", sock.local_endpoint()->to_string(),

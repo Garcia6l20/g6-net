@@ -15,9 +15,9 @@ namespace g6::net {
         int type;
         int proto;
     };
-    namespace protos {
+    namespace proto {
         constexpr socket_protocol tcp{AF_INET, SOCK_STREAM, IPPROTO_TCP};
         constexpr socket_protocol udp{AF_INET, SOCK_DGRAM, IPPROTO_UDP};
-    }// namespace protos
+    }// namespace proto
 
 }// namespace g6::net

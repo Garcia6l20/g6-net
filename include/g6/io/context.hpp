@@ -1,5 +1,4 @@
-#ifndef G6_IO_CONTEXT_HPP_
-#define G6_IO_CONTEXT_HPP_
+#pragma once
 
 #include <g6/io_context.hpp>
 
@@ -11,6 +10,10 @@
 #include <g6/net/socket_protocols.hpp>
 
 namespace g6::io {
+
+#if G6_OS_WINDOWS
+    std::tuple<SOCKET, bool> create_socket(net::socket_protocol type, HANDLE ioCompletionPort);
+#endif
 
     class context : public io_context {
 
@@ -48,5 +51,3 @@ namespace g6::io {
 }// namespace g6::io
 
 #include <g6/io/impl/context_impl.hpp>
-
-#endif// G6_IO_CONTEXT_HPP_

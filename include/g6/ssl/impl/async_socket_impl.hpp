@@ -57,6 +57,18 @@ namespace g6::ssl {
         return {ctx, fd, ssl::async_socket::connection_mode::client, certificate, pk};
     }
 
+    task<std::tuple<async_socket, net::ip_endpoint>> tag_invoke(tag_t<net::async_accept>, ssl::async_socket &socket,
+                                                                std::stop_token const &stop = {}) {
+        auto [in_sock, endpoint] = co_await net::async_accept(static_cast<net::async_socket &>(socket), stop);
+        ssl::async_socket ssl_sock{std::move(in_sock), ssl::async_socket::connection_mode::server, socket.certificate_,
+                                   socket.key_};
+        ssl_sock.host_name(socket.hostname_);
+        ssl_sock.verify_flags_ = socket.verify_flags_;
+        ssl_sock.verify_mode_ = socket.verify_mode_;
+        co_await ssl::async_encrypt(ssl_sock);
+        co_return std::make_tuple(std::move(ssl_sock), std::move(endpoint));
+    }
+
     task<void> tag_invoke(tag_t<net::async_connect>, ssl::async_socket &socket, const net::ip_endpoint &endpoint) {
         co_await net::async_connect(static_cast<net::async_socket &>(socket), endpoint);
         co_await ssl::async_encrypt(socket);

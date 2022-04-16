@@ -144,26 +144,26 @@ namespace g6::net {
             }
         }
 
-        friend auto tag_invoke(tag<async_accept>, async_socket &socket, std::stop_token stop_token) noexcept;
+        friend auto tag_invoke(tag_t<async_accept>, async_socket &socket, std::stop_token stop_token) noexcept;
 
-        friend auto tag_invoke(tag<async_connect>, async_socket &socket, ip_endpoint const &endpoint,
+        friend auto tag_invoke(tag_t<async_connect>, async_socket &socket, ip_endpoint const &endpoint,
                                std::stop_token stop_token) noexcept;
 
-        friend auto tag_invoke(tag<async_send>, async_socket &socket, std::span<const std::byte> buffer,
+        friend auto tag_invoke(tag_t<async_send>, async_socket &socket, std::span<const std::byte> buffer,
                                std::stop_token stop_token) noexcept;
 
-        friend auto tag_invoke(tag<async_recv>, async_socket &socket, std::span<std::byte> buffer,
+        friend auto tag_invoke(tag_t<async_recv>, async_socket &socket, std::span<std::byte> buffer,
                                std::stop_token stop_token) noexcept;
 
-        friend auto tag_invoke(tag<async_send_to>, async_socket &socket, std::span<const std::byte> buffer,
+        friend auto tag_invoke(tag_t<async_send_to>, async_socket &socket, std::span<const std::byte> buffer,
                                net::ip_endpoint const &endpoint, std::stop_token stop_token) noexcept;
 
-        friend auto tag_invoke(tag<async_recv_from>, async_socket &socket, std::span<std::byte> buffer,
+        friend auto tag_invoke(tag_t<async_recv_from>, async_socket &socket, std::span<std::byte> buffer,
                                std::stop_token stop_token) noexcept;
 
-        friend auto tag_invoke(tag<pending_bytes>, async_socket &socket) noexcept;
+        friend auto tag_invoke(tag_t<pending_bytes>, async_socket &socket) noexcept;
 
-        friend auto tag_invoke(tag<has_pending_data>, async_socket &socket) noexcept;
+        friend auto tag_invoke(tag_t<has_pending_data>, async_socket &socket) noexcept;
 
     protected:
         socket_handle fd_;

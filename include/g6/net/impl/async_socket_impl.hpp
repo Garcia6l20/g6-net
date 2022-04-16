@@ -479,36 +479,36 @@ namespace g6::net {
 #endif
     }// namespace detail
 
-    inline auto tag_invoke(tag<async_accept>, async_socket &socket, std::stop_token stop_token = {}) noexcept {
+    inline auto tag_invoke(tag_t<async_accept>, async_socket &socket, std::stop_token stop_token = {}) noexcept {
         return detail::accept_sender{socket.context_, socket, stop_token};
     }
 
-    inline auto tag_invoke(tag<async_connect>, async_socket &socket, ip_endpoint const &endpoint,
+    inline auto tag_invoke(tag_t<async_connect>, async_socket &socket, ip_endpoint const &endpoint,
                            std::stop_token stop_token = {}) noexcept {
         return detail::connect_sender{socket.context_, socket, endpoint, stop_token};
     }
 
-    inline auto tag_invoke(tag<async_send>, async_socket &socket, std::span<const std::byte> buffer,
+    inline auto tag_invoke(tag_t<async_send>, async_socket &socket, std::span<const std::byte> buffer,
                            std::stop_token stop_token = {}) noexcept {
         return detail::send_sender{socket.context_, socket, buffer, stop_token};
     }
 
-    inline auto tag_invoke(tag<async_recv>, async_socket &socket, std::span<std::byte> buffer,
+    inline auto tag_invoke(tag_t<async_recv>, async_socket &socket, std::span<std::byte> buffer,
                            std::stop_token stop_token = {}) noexcept {
         return detail::recv_sender{socket.context_, socket, buffer, stop_token};
     }
 
-    inline auto tag_invoke(tag<async_send_to>, async_socket &socket, std::span<const std::byte> buffer,
+    inline auto tag_invoke(tag_t<async_send_to>, async_socket &socket, std::span<const std::byte> buffer,
                            net::ip_endpoint const &endpoint, std::stop_token stop_token = {}) noexcept {
         return detail::send_to_sender{socket.context_, socket, endpoint, buffer, stop_token};
     }
 
-    inline auto tag_invoke(tag<async_recv_from>, async_socket &socket, std::span<std::byte> buffer,
+    inline auto tag_invoke(tag_t<async_recv_from>, async_socket &socket, std::span<std::byte> buffer,
                            std::stop_token stop_token = {}) noexcept {
         return detail::recv_from_sender{socket.context_, socket, buffer, stop_token};
     }
 
-    inline auto tag_invoke(tag<pending_bytes>, async_socket &socket) noexcept {
+    inline auto tag_invoke(tag_t<pending_bytes>, async_socket &socket) noexcept {
 #if G6_OS_WINDOWS
         unsigned long count = 0;
         DWORD out_sz = 0;
@@ -519,10 +519,10 @@ namespace g6::net {
 #endif
         return count;
     }
-    inline auto tag_invoke(tag<has_pending_data>, async_socket &socket) noexcept { return pending_bytes(socket) > 0; }
+    inline auto tag_invoke(tag_t<has_pending_data>, async_socket &socket) noexcept { return pending_bytes(socket) > 0; }
 
     // template<class IOContext2>
-    // auto tag_invoke(tag<net::open_socket>, IOContext2 &ctx, net::detail::tags::tcp const &,
+    // auto tag_invoke(tag_t<net::open_socket>, IOContext2 &ctx, net::detail::tags::tcp const &,
     //                 const net::ip_endpoint &endpoint) {
     //     auto sock = net::open_socket(ctx, AF_INET, SOCK_STREAM);
     //     sock.bind(endpoint);
@@ -531,14 +531,14 @@ namespace g6::net {
     // }
 
     // template<class IOContext2>
-    // auto tag_invoke(tag<net::open_socket>, IOContext2 &ctx, net::detail::tags::tcp const &) {
+    // auto tag_invoke(tag_t<net::open_socket>, IOContext2 &ctx, net::detail::tags::tcp const &) {
     //     return net::open_socket(ctx, AF_INET, SOCK_STREAM);
     // }
 
 }// namespace g6::net
 
 namespace g6::io {
-    inline auto tag_invoke(tag<net::open_socket>, io::context &ctx, net::socket_protocol sock_type) {
+    inline auto tag_invoke(tag_t<net::open_socket>, io::context &ctx, net::socket_protocol sock_type) {
 #if G6_OS_WINDOWS
         auto [socket, skip_completion] = create_socket(sock_type, ctx.iocp_handle());
         if (socket == INVALID_SOCKET) {

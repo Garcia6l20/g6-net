@@ -12,7 +12,7 @@ namespace g6::ssl {
      * @param pk
      * @return The created ssl::async_socket
      */
-    ssl::async_socket tag_invoke(tag<net::open_socket>, auto &ctx, net::ip_endpoint const &endpoint,
+    ssl::async_socket tag_invoke(tag_t<net::open_socket>, auto &ctx, net::ip_endpoint const &endpoint,
                                  ssl::certificate const &certificate, ssl::private_key const &pk) {
 #if G6_OS_WINDOWS
         auto [result, iocp_skip] = io::create_socket(net::proto::tcp, ctx.iocp_handle());
@@ -30,7 +30,7 @@ namespace g6::ssl {
         return sock;
     }
 
-    ssl::async_socket tag_invoke(tag<net::open_socket>, auto &ctx, ssl::detail::tags::tcp_client) {
+    ssl::async_socket tag_invoke(tag_t<net::open_socket>, auto &ctx, ssl::detail::tags::tcp_client) {
 #if G6_OS_WINDOWS
         auto [result, iocp_skip] = io::create_socket(net::proto::tcp, ctx.iocp_handle());
         if (result < 0) { throw std::system_error{static_cast<int>(::WSAGetLastError()), std::system_category()}; }
@@ -47,7 +47,7 @@ namespace g6::ssl {
         return sock;
     }
 
-    ssl::async_socket tag_invoke(tag<net::open_socket>, auto &ctx, ssl::detail::tags::tcp_server,
+    ssl::async_socket tag_invoke(tag_t<net::open_socket>, auto &ctx, ssl::detail::tags::tcp_server,
                                  ssl::certificate const &certificate, ssl::private_key const &pk) {
         int fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if (fd < 0) {
@@ -57,7 +57,7 @@ namespace g6::ssl {
         return {ctx, fd, ssl::async_socket::connection_mode::client, certificate, pk};
     }
 
-    task<void> tag_invoke(tag<net::async_connect>, ssl::async_socket &socket, const net::ip_endpoint &endpoint) {
+    task<void> tag_invoke(tag_t<net::async_connect>, ssl::async_socket &socket, const net::ip_endpoint &endpoint) {
         co_await net::async_connect(static_cast<net::async_socket &>(socket), endpoint);
         co_await ssl::async_encrypt(socket);
     }
@@ -65,7 +65,7 @@ namespace g6::ssl {
 }// namespace g6::ssl
 
 namespace g6::io {
-    ssl::async_socket tag_invoke(tag<net::open_socket> tag, auto &ctx, ssl::detail::tags::tcp_client tcp_tag) {
-        return ssl::tag_invoke(tag, ctx, tcp_tag);
+    ssl::async_socket tag_invoke(tag_t<net::open_socket> tag_t, auto &ctx, ssl::detail::tags::tcp_client tcp_tag) {
+        return ssl::tag_invoke(tag_t, ctx, tcp_tag);
     }
 }// namespace g6::io

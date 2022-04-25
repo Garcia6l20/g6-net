@@ -1,7 +1,7 @@
 #ifndef G6_NET_NET_CPO_HPP_
 #define G6_NET_NET_CPO_HPP_
 
-#include <g6/tag_invoke.hpp>
+#include <g6/tag_invoke>
 
 namespace g6::net {
 

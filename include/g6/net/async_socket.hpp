@@ -93,7 +93,13 @@ namespace g6::net {
         socket_protocol protocol() const noexcept { return type_; }
 
         void listen(size_t count = 100) {
-            if (::listen(fd_.get(), count) < 0) { throw std::system_error(-errno, std::system_category()); }
+#if G6_OS_WINDOWS
+            if (::listen(fd_.get(), int(count)) < 0) {
+#else
+            if (::listen(fd_.get(), count) < 0) {
+#endif
+                throw std::system_error(-errno, std::system_category());
+            }
         }
 
         template<typename Opt, typename... Args>

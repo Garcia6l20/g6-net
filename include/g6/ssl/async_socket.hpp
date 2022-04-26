@@ -299,7 +299,7 @@ namespace g6::ssl {
         }
 
         friend task<std::tuple<async_socket, net::ip_endpoint>>
-        tag_invoke(tag_t<net::async_accept>, ssl::async_socket &socket, std::stop_token const &stop);
+        tag_invoke(tag_t<net::async_accept>, ssl::async_socket &socket, std::stop_token stop);
 
         connection_mode mode_;
         std::optional<ssl::certificate> certificate_{};

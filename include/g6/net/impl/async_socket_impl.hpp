@@ -58,8 +58,8 @@ namespace g6::net {
             }
 
             explicit io_operation_base(io::context &context, async_socket &socket, std::stop_token stop_token) noexcept
-                : context_{context}, socket_{socket},
-                  on_stop_requested_{stop_token, [this]() noexcept {
+                : context_{context}, socket_{socket}, stop_token_{std::move(stop_token)},
+                  on_stop_requested_{stop_token_, [this]() noexcept {
 #if G6_OS_WINDOWS
                                          (void) ::CancelIoEx(reinterpret_cast<HANDLE>(socket_.fd_.get()),
                                                              reinterpret_cast<_OVERLAPPED *>(this));
@@ -73,6 +73,7 @@ namespace g6::net {
         protected:
             io::context &context_;
             async_socket &socket_;
+            std::stop_token stop_token_;
             std::stop_callback<std::function<void()>> on_stop_requested_;
         };
 

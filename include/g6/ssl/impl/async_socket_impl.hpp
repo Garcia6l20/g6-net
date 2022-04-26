@@ -58,7 +58,7 @@ namespace g6::ssl {
     }
 
     task<std::tuple<async_socket, net::ip_endpoint>> tag_invoke(tag_t<net::async_accept>, ssl::async_socket &socket,
-                                                                std::stop_token const &stop = {}) {
+                                                                std::stop_token stop = {}) {
         auto [in_sock, endpoint] = co_await net::async_accept(static_cast<net::async_socket &>(socket), stop);
         ssl::async_socket ssl_sock{std::move(in_sock), ssl::async_socket::connection_mode::server, socket.certificate_,
                                    socket.key_};

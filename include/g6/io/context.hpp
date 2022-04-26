@@ -1,6 +1,8 @@
 #pragma once
 
 #include <g6/io_context.hpp>
+#include <g6/tag_invoke>
+#include <g6/task.hpp>
 
 #include <g6/io/config.hpp>
 #include <g6/io/io_cpo.hpp>
@@ -13,11 +15,44 @@
 
 #include <fmt/format.h>
 #include <string_view>
+
+
+#if G6_OS_LINUX
 #include <unistd.h>
+#endif
 
 #include <span>
 
 namespace g6::io {
+
+    class context;
+    class term_io;
+
+    template<size_t extent>
+    auto tag_invoke(tag_t<async_read_some>, term_io &, std::span<std::byte, extent>);
+
+    template<size_t extent>
+    auto tag_invoke(tag_t<async_write_some>, term_io &, std::span<std::byte, extent>);
+
+    template<size_t N, typename... Args>
+    task<size_t> tag_invoke(tag_t<async_write_some>, term_io &, const char (&)[N], Args &&...);
+
+    class term_io {
+        g6::io::context &ctx_;
+        g6::file file_;
+
+    public:
+        term_io(context &ctx, auto file_no) noexcept : file_{ctx, file_no}, ctx_{ctx} { file_.dont_close(); }
+
+        template<size_t extent>
+        friend auto tag_invoke(tag_t<async_read_some>, term_io &, std::span<std::byte, extent>);
+
+        template<size_t extent>
+        friend auto tag_invoke(tag_t<async_write_some>, term_io &, std::span<std::byte const, extent>);
+
+        template<size_t N, typename... Args>
+        friend task<size_t> tag_invoke(tag_t<async_write_some>, term_io &, const char (&)[N], Args &&...);
+    };
 
 #if G6_OS_WINDOWS
     std::tuple<SOCKET, bool> create_socket(net::socket_protocol type, HANDLE ioCompletionPort);
@@ -30,39 +65,36 @@ namespace g6::io {
         friend void ensure_winsock_initialized();
 #endif
 
-        template<auto FileNo>
-        class term_io : private file {
-            static const auto fileno_ = FileNo;
-            context &ctx_;
-            friend class context;
-            term_io(context &ctx) noexcept : file{ctx, FileNo}, ctx_{ctx} { dont_close(); }
-
-            template<size_t extent>
-            friend auto tag_invoke(tag_t<async_read_some>, term_io<FileNo> &io, std::span<std::byte, extent> buffer) {
-                return async_read_some(static_cast<file &>(io), buffer);
-            }
-
-            template<size_t extent>
-            friend auto tag_invoke(tag_t<async_write_some>, term_io<FileNo> &io,
-                                   std::span<std::byte const, extent> buffer) {
-                return async_write_some(static_cast<file &>(io), buffer);
-            }
-
-            template<size_t N, typename... Args>
-            friend task<size_t> tag_invoke(tag_t<async_write_some>, term_io<FileNo> &io, const char (&format_)[N],
-                                           Args &&...args) {
-                auto buffer = fmt::vformat(std::string_view{format_}, fmt::make_format_args(args...));
-                co_return co_await async_write_some(io, std::as_bytes(std::span{buffer.data(), buffer.size()}));
-            }
-        };
 
     public:
         friend auto tag_invoke(tag_t<net::open_socket>, io::context &ctx, net::socket_protocol socket_protocol);
 
-        term_io<STDIN_FILENO> cin{*this};
-        term_io<STDOUT_FILENO> cout{*this};
-        term_io<STDERR_FILENO> cerr{*this};
+#if G6_OS_WINDOWS
+        term_io cin{*this, GetStdHandle(STD_INPUT_HANDLE)};
+        term_io cout{*this, GetStdHandle(STD_OUTPUT_HANDLE)};
+        term_io cerr{*this, GetStdHandle(STD_ERROR_HANDLE)};
+#else
+        term_io cin{*this, STDIN_FILENO};
+        term_io cout{*this, STDOUT_FILENO};
+        term_io cerr{*this, STDERR_FILENO};
+#endif
     };
+
+    template<size_t extent>
+    auto tag_invoke(tag_t<async_read_some>, term_io &io, std::span<std::byte, extent> buffer) {
+        return async_read_some(io.file_, buffer);
+    }
+
+    template<size_t extent>
+    auto tag_invoke(tag_t<async_write_some>, term_io &io, std::span<std::byte const, extent> buffer) {
+        return async_write_some(io.file_, buffer);
+    }
+
+    template<size_t N, typename... Args>
+    task<size_t> tag_invoke(tag_t<async_write_some>, term_io &io, const char (&format_)[N], Args &&...args) {
+        auto buffer = fmt::vformat(std::string_view{format_}, fmt::make_format_args(args...));
+        co_return co_await async_write_some(io.file_, std::as_bytes(std::span{buffer.data(), buffer.size()}));
+    }
 
 }// namespace g6::io
 

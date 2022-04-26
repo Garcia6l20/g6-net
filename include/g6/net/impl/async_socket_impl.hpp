@@ -265,7 +265,7 @@ namespace g6::net {
                                                              reinterpret_cast<_OVERLAPPED *>(this));
                                          static_cast<Operation &>(*this).op_cancelled();
                                      }} {
-                buffer_.len = buffer.size();
+                buffer_.len = ULONG(buffer.size());
                 buffer_.buf = reinterpret_cast<decltype(buffer_.buf)>(const_cast<std::byte *>(buffer.data()));
             }
 

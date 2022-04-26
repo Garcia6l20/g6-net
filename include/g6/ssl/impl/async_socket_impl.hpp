@@ -65,13 +65,14 @@ namespace g6::ssl {
         ssl_sock.host_name(socket.hostname_);
         ssl_sock.verify_flags_ = socket.verify_flags_;
         ssl_sock.verify_mode_ = socket.verify_mode_;
-        co_await ssl::async_encrypt(ssl_sock);
+        co_await ssl::async_encrypt(ssl_sock, stop);
         co_return std::make_tuple(std::move(ssl_sock), std::move(endpoint));
     }
 
-    task<void> tag_invoke(tag_t<net::async_connect>, ssl::async_socket &socket, const net::ip_endpoint &endpoint) {
-        co_await net::async_connect(static_cast<net::async_socket &>(socket), endpoint);
-        co_await ssl::async_encrypt(socket);
+    task<void> tag_invoke(tag_t<net::async_connect>, ssl::async_socket &socket, const net::ip_endpoint &endpoint,
+                          std::stop_token stop = {}) {
+        co_await net::async_connect(static_cast<net::async_socket &>(socket), endpoint, stop);
+        co_await ssl::async_encrypt(socket, stop);
     }
 
 }// namespace g6::ssl

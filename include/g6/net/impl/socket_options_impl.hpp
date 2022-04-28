@@ -17,7 +17,11 @@ namespace g6::net {
         auto impl_value = static_cast<ImplT>(value);
         if (setsockopt(fd, so_level, opt_name, reinterpret_cast<const char *>(&impl_value), sizeof(impl_value)) < 0) {
             using namespace std::literals;
+#if G6_OS_WINDOWS
+            throw std::system_error{static_cast<int>(::WSAGetLastError()), std::system_category()};
+#else
             throw std::system_error{errno, std::system_category()};
+#endif
         }
     }
     template<int so_level, int opt_name, typename UserT, typename ImplT>
@@ -26,7 +30,11 @@ namespace g6::net {
         details::sock_opt_size_t impl_size = sizeof(impl_value);
         if (getsockopt(fd, so_level, opt_name, reinterpret_cast<char *>(&impl_value), &impl_size) < 0) {
             using namespace std::literals;
+#if G6_OS_WINDOWS
+            throw std::system_error{static_cast<int>(::WSAGetLastError()), std::system_category()};
+#else
             throw std::system_error{errno, std::system_category()};
+#endif
         }
         return static_cast<UserT>(impl_value);
     }
@@ -35,7 +43,11 @@ namespace g6::net {
     void empty_socket_option<so_level, opt_name>::set_impl(auto fd) {
         if (setsockopt(fd, so_level, opt_name, nullptr, 0) < 0) {
             using namespace std::literals;
+#if G6_OS_WINDOWS
+            throw std::system_error{static_cast<int>(::WSAGetLastError()), std::system_category()};
+#else
             throw std::system_error{errno, std::system_category()};
+#endif
         }
     }
     template<int so_level, int opt_name>

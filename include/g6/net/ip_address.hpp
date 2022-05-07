@@ -13,8 +13,13 @@
 #include <string>
 
 namespace g6::net {
-    class ip_address
-    {
+    class ip_address {
+    public:
+        enum class family { ipv4, ipv6 };
+
+    private:
+        family m_family;
+
     public:
         // Constructs to IPv4 address 0.0.0.0
         ip_address() noexcept;
@@ -22,6 +27,7 @@ namespace g6::net {
         ip_address(ipv4_address address) noexcept;
         ip_address(ipv6_address address) noexcept;
 
+        family family() const noexcept { return m_family; }
         [[nodiscard]] bool is_ipv4() const noexcept { return m_family == family::ipv4; }
         [[nodiscard]] bool is_ipv6() const noexcept { return m_family == family::ipv6; }
 
@@ -44,30 +50,17 @@ namespace g6::net {
         bool operator>=(const ip_address &rhs) const noexcept;
 
     private:
-        enum class family
-        {
-            ipv4,
-            ipv6
-        };
-
-        family m_family;
-
-        union
-        {
+        union {
             ipv4_address m_ipv4;
             ipv6_address m_ipv6;
         };
     };
 
-    inline ip_address::ip_address() noexcept
-        : m_family(family::ipv4), m_ipv4() {}
+    inline ip_address::ip_address() noexcept : m_family(family::ipv4), m_ipv4() {}
 
-    inline ip_address::ip_address(ipv4_address address) noexcept
-        : m_family(family::ipv4), m_ipv4(address) {}
+    inline ip_address::ip_address(ipv4_address address) noexcept : m_family(family::ipv4), m_ipv4(address) {}
 
-    inline ip_address::ip_address(ipv6_address address) noexcept
-        : m_family(family::ipv6), m_ipv6(address) {
-    }
+    inline ip_address::ip_address(ipv6_address address) noexcept : m_family(family::ipv6), m_ipv6(address) {}
 
     inline const ipv4_address &ip_address::to_ipv4() const {
         assert(is_ipv4());
@@ -91,9 +84,7 @@ namespace g6::net {
         }
     }
 
-    inline bool ip_address::operator!=(const ip_address &rhs) const noexcept {
-        return !(*this == rhs);
-    }
+    inline bool ip_address::operator!=(const ip_address &rhs) const noexcept { return !(*this == rhs); }
 
     inline bool ip_address::operator<(const ip_address &rhs) const noexcept {
         if (is_ipv4()) {
@@ -103,17 +94,11 @@ namespace g6::net {
         }
     }
 
-    inline bool ip_address::operator>(const ip_address &rhs) const noexcept {
-        return rhs < *this;
-    }
+    inline bool ip_address::operator>(const ip_address &rhs) const noexcept { return rhs < *this; }
 
-    inline bool ip_address::operator<=(const ip_address &rhs) const noexcept {
-        return !(rhs < *this);
-    }
+    inline bool ip_address::operator<=(const ip_address &rhs) const noexcept { return !(rhs < *this); }
 
-    inline bool ip_address::operator>=(const ip_address &rhs) const noexcept {
-        return !(*this < rhs);
-    }
+    inline bool ip_address::operator>=(const ip_address &rhs) const noexcept { return !(*this < rhs); }
 }// namespace g6::net
 
-#endif // G6_NET_IP_ADDRESS_HPP_
+#endif// G6_NET_IP_ADDRESS_HPP_

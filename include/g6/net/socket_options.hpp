@@ -1,5 +1,4 @@
-#ifndef G6_NET_CPO_HPP_
-#define G6_NET_CPO_HPP_
+#pragma once
 
 #include <cstring>
 
@@ -89,5 +88,3 @@ namespace g6::net::socket_options {
 }// namespace g6::net::socket_options
 
 #include <g6/net/impl/socket_options_impl.hpp>
-
-#endif// G6_NET_CPO_HPP_

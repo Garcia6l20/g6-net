@@ -17,20 +17,20 @@ int main() {
                 scope_guard _ = [&]() noexcept { stop_source.request_stop(); };
                 try {
                     auto sock = net::open_socket(ctx, net::proto::tcp);
-                    sock.bind(*net::ip_endpoint::from_string("127.0.0.1:4242"));
+                    sock.bind(*from_string<net::ip_endpoint>("127.0.0.1:4242"));
                     sock.listen();
                     auto [client, client_address] = co_await net::async_accept(sock);
                     char buffer[1024]{};
                     auto byte_count = co_await net::async_recv(client, as_writable_bytes(std::span{buffer}));
-                    fmt::print("received: {} bytes from {}: {}\n", byte_count, client_address.to_string(),
+                    fmt::print("received: {} bytes from {}: {}\n", byte_count, client_address,
                                std::string_view{buffer, byte_count});
                 } catch (std::exception const &ex) { fmt::print("server failed: {}\n", ex.what()); }
             }(),
             [&]() -> task<void> {
                 try {
                     auto sock = net::open_socket(ctx, net::proto::tcp);
-                    sock.bind(*net::ip_endpoint::from_string("127.0.0.1:0"));
-                    co_await net::async_connect(sock, *net::ip_endpoint::from_string("127.0.0.1:4242"));
+                    sock.bind(*from_string<net::ip_endpoint>("127.0.0.1:0"));
+                    co_await net::async_connect(sock, *from_string<net::ip_endpoint>("127.0.0.1:4242"));
                     constexpr std::string_view hello{"hello world !!!"};
                     co_await net::async_send(sock, as_bytes(std::span{hello.data(), hello.size()}));
                 } catch (std::exception const &ex) {

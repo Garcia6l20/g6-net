@@ -1,21 +1,9 @@
-///////////////////////////////////////////////////////////////////////////////
-// Copyright (c) Lewis Baker
-// Licenced under MIT license. See LICENSE.txt for details.
-///////////////////////////////////////////////////////////////////////////////
-
 #include <g6/net/ip_endpoint.hpp>
 
-std::string g6::net::ip_endpoint::to_string() const {
-    auto s = addr_.to_string();
-    s.push_back(':');
-    s.append(std::to_string(port_));
-    return s;
-}
-
-std::optional<g6::net::ip_endpoint> g6::net::ip_endpoint::from_string(std::string_view string) noexcept {
-    if (auto ipv4 = ipv4_endpoint::from_string(string); ipv4) { return *ipv4; }
-
-    if (auto ipv6 = ipv6_endpoint::from_string(string); ipv6) { return *ipv6; }
-
-    return std::nullopt;
-}
+namespace g6::net {
+    std::optional<ip_endpoint> tag_invoke(tag_t<g6::from_string<ip_endpoint>>, std::string_view string) noexcept {
+        if (auto ipv4 = g6::from_string<ipv4_endpoint>(string); ipv4) { return *ipv4; }
+        if (auto ipv6 = g6::from_string<ipv6_endpoint>(string); ipv6) { return *ipv6; }
+        return std::nullopt;
+    }
+}// namespace g6::net

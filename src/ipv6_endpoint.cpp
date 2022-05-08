@@ -3,82 +3,25 @@
 // Copyright (c) 2015 Lewis Baker
 ///////////////////////////////////////////////////////////////////////////////
 
+#include <cstdint>
 #include <g6/net/ipv6_endpoint.hpp>
 
-#include <algorithm>
+namespace g6::net {
+    std::optional<ipv6_endpoint> tag_invoke(tag_t<from_string<ipv6_endpoint>>, std::string_view string) noexcept {
+        // Shortest valid endpoint is "[::]:0"
+        if (string.size() < 6) { return std::nullopt; }
 
-namespace
-{
-	namespace local
-	{
-		bool is_digit(char c)
-		{
-			return c >= '0' && c <= '9';
-		}
+        if (string[0] != '[') { return std::nullopt; }
 
-		std::uint8_t digit_value(char c)
-		{
-			return static_cast<std::uint8_t>(c - '0');
-		}
+        auto closeBracketPos = string.find("]:", 1);
+        if (closeBracketPos == std::string_view::npos) { return std::nullopt; }
 
-		std::optional<std::uint16_t> parse_port(std::string_view string)
-		{
-			if (string.empty()) return std::nullopt;
+        auto address = g6::from_string<ipv6_address>(string.substr(1, closeBracketPos - 1));
+        if (!address) { return std::nullopt; }
 
-			std::uint32_t value = 0;
-			for (auto c : string)
-			{
-				if (!is_digit(c)) return std::nullopt;
-				value = value * 10 + digit_value(c);
-				if (value > 0xFFFFu) return std::nullopt;
-			}
+        auto port = g6::from_string<uint16_t>(string.substr(closeBracketPos + 2));
+        if (!port) { return std::nullopt; }
 
-			return static_cast<std::uint16_t>(value);
-		}
-	}
-}
-
-std::string g6::net::ipv6_endpoint::to_string() const
-{
-	std::string result;
-	result.push_back('[');
-	result += m_address.to_string();
-	result += "]:";
-	result += std::to_string(m_port);
-	return result;
-}
-
-std::optional<g6::net::ipv6_endpoint>
-g6::net::ipv6_endpoint::from_string(std::string_view string) noexcept
-{
-	// Shortest valid endpoint is "[::]:0"
-	if (string.size() < 6)
-	{
-		return std::nullopt;
-	}
-
-	if (string[0] != '[')
-	{
-		return std::nullopt;
-	}
-
-	auto closeBracketPos = string.find("]:", 1);
-	if (closeBracketPos == std::string_view::npos)
-	{
-		return std::nullopt;
-	}
-
-	auto address = ipv6_address::from_string(string.substr(1, closeBracketPos - 1));
-	if (!address)
-	{
-		return std::nullopt;
-	}
-
-	auto port = local::parse_port(string.substr(closeBracketPos + 2));
-	if (!port)
-	{
-		return std::nullopt;
-	}
-
-	return ipv6_endpoint{ *address, *port };
-}
+        return ipv6_endpoint{*address, *port};
+    }
+}// namespace g6::net

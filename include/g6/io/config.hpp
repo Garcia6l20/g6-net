@@ -1,5 +1,4 @@
-#ifndef G6_IO_CONFIG_HPP_
-#define G6_IO_CONFIG_HPP_
+#pragma once
 
 #include <g6/config.hpp>
 
@@ -17,5 +16,3 @@
 #define G6_IO_USE_EPOLL_CONTEXT false
 #define G6_IO_USE_IOCP_CONTEXT true
 #endif
-
-#endif// G6_IO_CONFIG_HPP_

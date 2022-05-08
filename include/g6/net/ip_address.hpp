@@ -1,9 +1,7 @@
-///////////////////////////////////////////////////////////////////////////////
-// Copyright (c) Lewis Baker
-// Licenced under MIT license. See LICENSE.txt for details.
-///////////////////////////////////////////////////////////////////////////////
-#ifndef G6_NET_IP_ADDRESS_HPP_
-#define G6_NET_IP_ADDRESS_HPP_
+#pragma once
+
+#include <g6/format.hpp>
+#include <g6/from_string.hpp>
 
 #include <g6/net/ipv4_address.hpp>
 #include <g6/net/ipv6_address.hpp>
@@ -11,6 +9,7 @@
 #include <cassert>
 #include <optional>
 #include <string>
+#include <string_view>
 
 namespace g6::net {
     class ip_address {
@@ -36,18 +35,21 @@ namespace g6::net {
 
         [[nodiscard]] const std::uint8_t *bytes() const noexcept;
 
-        std::string to_string() const;
+        friend std::optional<ip_address> tag_invoke(tag_t<g6::from_string<ip_address>>,
+                                                    std::string_view string) noexcept;
 
-        static std::optional<ip_address> from_string(std::string_view string) noexcept;
+        template<typename Context>
+        friend auto tag_invoke(tag_t<g6::format_to>, ip_address const &self, Context &ctx) noexcept {
+            if (self.is_ipv4()) {
+                return g6::format_to(ctx.out(), "{}", self.m_ipv4);
+            } else {
+                return g6::format_to(ctx.out(), "{}", self.m_ipv6);
+            }
+        }
 
-        bool operator==(const ip_address &rhs) const noexcept;
-        bool operator!=(const ip_address &rhs) const noexcept;
 
-        //  ipv4_address sorts less than ipv6_address
-        bool operator<(const ip_address &rhs) const noexcept;
-        bool operator>(const ip_address &rhs) const noexcept;
-        bool operator<=(const ip_address &rhs) const noexcept;
-        bool operator>=(const ip_address &rhs) const noexcept;
+        bool operator==(const ip_address &rhs) const noexcept = default;
+        constexpr auto operator<=>(const ip_address &rhs) const noexcept = default;
 
     private:
         union {
@@ -76,29 +78,4 @@ namespace g6::net {
         return is_ipv4() ? m_ipv4.bytes() : m_ipv6.bytes();
     }
 
-    inline bool ip_address::operator==(const ip_address &rhs) const noexcept {
-        if (is_ipv4()) {
-            return rhs.is_ipv4() && m_ipv4 == rhs.m_ipv4;
-        } else {
-            return rhs.is_ipv6() && m_ipv6 == rhs.m_ipv6;
-        }
-    }
-
-    inline bool ip_address::operator!=(const ip_address &rhs) const noexcept { return !(*this == rhs); }
-
-    inline bool ip_address::operator<(const ip_address &rhs) const noexcept {
-        if (is_ipv4()) {
-            return !rhs.is_ipv4() || m_ipv4 < rhs.m_ipv4;
-        } else {
-            return rhs.is_ipv6() && m_ipv6 < rhs.m_ipv6;
-        }
-    }
-
-    inline bool ip_address::operator>(const ip_address &rhs) const noexcept { return rhs < *this; }
-
-    inline bool ip_address::operator<=(const ip_address &rhs) const noexcept { return !(rhs < *this); }
-
-    inline bool ip_address::operator>=(const ip_address &rhs) const noexcept { return !(*this < rhs); }
 }// namespace g6::net
-
-#endif// G6_NET_IP_ADDRESS_HPP_

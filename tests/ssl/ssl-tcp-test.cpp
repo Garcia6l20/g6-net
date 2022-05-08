@@ -20,14 +20,14 @@ TEST_CASE("ssl tcp tx/rx test", "[g6::ssl::tcp]") {
     const ssl::certificate certificate{cert};
     const ssl::private_key private_key{key};
 
-    auto server = net::open_socket(ctx, *net::ip_endpoint::from_string("127.0.0.1:0"), certificate, private_key);
+    auto server = net::open_socket(ctx, *from_string<net::ip_endpoint>("127.0.0.1:0"), certificate, private_key);
     server.host_name("localhost");
     server.set_peer_verify_mode(ssl::peer_verify_mode::optional);
     server.set_verify_flags(ssl::verify_flags::allow_untrusted);
 
     auto server_endpoint = *server.local_endpoint();
 
-    fmt::print("server endpoint: {}\n", server_endpoint.to_string());
+    fmt::print("server endpoint: {}\n", server_endpoint);
 
     auto [server_result, client_result, _] = sync_wait(
         [&]() -> task<size_t> {
@@ -47,7 +47,7 @@ TEST_CASE("ssl tcp tx/rx test", "[g6::ssl::tcp]") {
         [&]() -> task<size_t> {
             scope_guard _ = [&]() noexcept { stop_source.request_stop(); };
             auto client = net::open_socket(ctx, ssl::tcp_client);
-            client.bind(*net::ip_endpoint::from_string("127.0.0.1:0"));
+            client.bind(*from_string<net::ip_endpoint>("127.0.0.1:0"));
             client.host_name("localhost");
             client.set_peer_verify_mode(ssl::peer_verify_mode::required);
             client.set_verify_flags(ssl::verify_flags::allow_untrusted);

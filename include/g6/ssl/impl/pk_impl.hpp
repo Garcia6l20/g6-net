@@ -1,3 +1,5 @@
+#pragma once
+
 #include <g6/ssl/context.hpp>
 #include <g6/ssl/error.hpp>
 #include <g6/ssl/key.hpp>

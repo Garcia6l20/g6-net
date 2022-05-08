@@ -1,7 +1,3 @@
-///////////////////////////////////////////////////////////////////////////////
-// Copyright (c) Lewis Baker
-// Licenced under MIT license. See LICENSE.txt for details.
-///////////////////////////////////////////////////////////////////////////////
 #pragma once
 
 #include <g6/config.hpp>
@@ -14,6 +10,9 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #endif
+
+#include <g6/format.hpp>
+#include <g6/from_string.hpp>
 
 #include <g6/net/ip_address.hpp>
 #include <g6/net/ipv4_endpoint.hpp>
@@ -46,18 +45,19 @@ namespace g6::net {
         [[nodiscard]] ip_address const &address() const noexcept;
         [[nodiscard]] std::uint16_t port() const noexcept;
 
-        [[nodiscard]] std::string to_string() const;
+        template<typename Context>
+        friend auto tag_invoke(tag_t<g6::format_to>, ip_endpoint const &self, Context &ctx) noexcept {
+            if (self.is_ipv4()) {
+                return g6::format_to(ctx.out(), "{}:{}", self.addr_, self.port_);
+            } else {
+                return g6::format_to(ctx.out(), "[{}]:{}", self.addr_, self.port_);
+            }
+        }
 
-        static std::optional<ip_endpoint> from_string(std::string_view string) noexcept;
+        friend std::optional<ip_endpoint> tag_invoke(tag_t<from_string<ip_endpoint>>, std::string_view string) noexcept;
 
-        bool operator==(const ip_endpoint &rhs) const noexcept;
-        bool operator!=(const ip_endpoint &rhs) const noexcept;
-
-        //  ipv4_endpoint sorts less than ipv6_endpoint
-        bool operator<(const ip_endpoint &rhs) const noexcept;
-        bool operator>(const ip_endpoint &rhs) const noexcept;
-        bool operator<=(const ip_endpoint &rhs) const noexcept;
-        bool operator>=(const ip_endpoint &rhs) const noexcept;
+        bool operator==(const ip_endpoint &rhs) const noexcept = default;
+        constexpr auto operator<=>(const ip_endpoint &rhs) const noexcept = default;
 
         static ip_endpoint from_sockaddr(const sockaddr &address) noexcept {
             if (address.sa_family == AF_INET) {
@@ -114,9 +114,11 @@ namespace g6::net {
 
     inline ip_endpoint::ip_endpoint() noexcept : addr_{ipv4_address{}} {}
 
-    inline ip_endpoint::ip_endpoint(ipv4_endpoint endpoint) noexcept : addr_(endpoint.address()) {}
+    inline ip_endpoint::ip_endpoint(ipv4_endpoint endpoint) noexcept
+        : addr_{endpoint.address()}, port_{endpoint.port()} {}
 
-    inline ip_endpoint::ip_endpoint(ipv6_endpoint endpoint) noexcept : addr_(endpoint.address()) {}
+    inline ip_endpoint::ip_endpoint(ipv6_endpoint endpoint) noexcept
+        : addr_{endpoint.address()}, port_{endpoint.port()} {}
 
     inline ip_endpoint::ip_endpoint(ip_address address, uint16_t port) noexcept : addr_{address}, port_{port} {}
 
@@ -124,19 +126,4 @@ namespace g6::net {
 
     inline std::uint16_t ip_endpoint::port() const noexcept { return port_; }
 
-    inline bool ip_endpoint::operator==(const ip_endpoint &rhs) const noexcept {
-        return port_ == rhs.port_ and addr_ == rhs.addr_;
-    }
-
-    inline bool ip_endpoint::operator!=(const ip_endpoint &rhs) const noexcept { return !(*this == rhs); }
-
-    inline bool ip_endpoint::operator<(const ip_endpoint &rhs) const noexcept {
-        return port_ < rhs.port_ or addr_ < rhs.addr_;
-    }
-
-    inline bool ip_endpoint::operator>(const ip_endpoint &rhs) const noexcept { return rhs < *this; }
-
-    inline bool ip_endpoint::operator<=(const ip_endpoint &rhs) const noexcept { return !(rhs < *this); }
-
-    inline bool ip_endpoint::operator>=(const ip_endpoint &rhs) const noexcept { return !(*this < rhs); }
 }// namespace g6::net

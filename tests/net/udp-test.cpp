@@ -1,13 +1,9 @@
-#include "g6/cpo/scheduler.hpp"
 #include <catch2/catch.hpp>
 
-#include <cstddef>
-#include <fmt/core.h>
-#include <fmt/format.h>
 
 #include <g6/io/context.hpp>
+
 #include <g6/net/async_socket.hpp>
-#include <g6/net/ip_endpoint.hpp>
 
 #include <g6/scope_guard.hpp>
 #include <g6/sync_wait.hpp>
@@ -49,7 +45,7 @@ TEST_CASE("udp tx/rx test", "[g6::net::udp]") {
             scope_guard _ = [&]() noexcept { stop_source.request_stop(); };
             auto sock = net::open_socket(ctx, net::proto::udp);
             std::array<std::byte, 64> buffer{};
-            sock.bind(*net::ip_endpoint::from_string("127.0.0.1:4242"));
+            sock.bind(*g6::from_string<net::ip_endpoint>("127.0.0.1:4242"));
             auto [bytes_received, from] =
                 co_await net::async_recv_from(sock, std::as_writable_bytes(std::span{buffer.data(), buffer.size()}));
             co_return bytes_received;
@@ -59,7 +55,7 @@ TEST_CASE("udp tx/rx test", "[g6::net::udp]") {
             const char buffer[] = {"hello world !!!"};
             co_await schedule_after(ctx, 10ms);
             auto bytes_sent = co_await net::async_send_to(sock, as_bytes(std::span{buffer}),
-                                                          *net::ip_endpoint::from_string("127.0.0.1:4242"));
+                                                          *from_string<net::ip_endpoint>("127.0.0.1:4242"));
             co_return bytes_sent;
         }(),
         async_exec(ctx, stop_source.get_token()));
@@ -78,7 +74,7 @@ TEST_CASE("udp has_pending_data test", "[g6::net::udp]") {
             scope_guard _ = [&]() noexcept { stop_source.request_stop(); };
             auto sock = net::open_socket(ctx, net::proto::udp);
             std::array<std::byte, 64> buffer{};
-            sock.bind(*net::ip_endpoint::from_string("127.0.0.1:4242"));
+            sock.bind(*from_string<net::ip_endpoint>("127.0.0.1:4242"));
             REQUIRE_FALSE(net::has_pending_data(sock));
             co_await schedule_after(ctx, 10ms);
             REQUIRE(net::pending_bytes(sock) == 16);
@@ -87,7 +83,7 @@ TEST_CASE("udp has_pending_data test", "[g6::net::udp]") {
             auto sock = net::open_socket(ctx, net::proto::udp);
             const char buffer[] = {"hello world !!!"};
             auto bytes_sent = co_await net::async_send_to(sock, std::as_bytes(std::span{buffer}),
-                                                          *net::ip_endpoint::from_string("127.0.0.1:4242"));
+                                                          *from_string<net::ip_endpoint>("127.0.0.1:4242"));
         }(),
         async_exec(ctx, stop_source.get_token()));
 }
@@ -103,7 +99,7 @@ TEST_CASE("udp reuse address", "[g6::net::udp]") {
         auto sock = net::open_socket(ctx, net::proto::udp);
         sock.setopt<net::socket_options::reuse_address>(true);
         REQUIRE(sock.getopt<net::socket_options::reuse_address>() == true);
-        sock.bind(*net::ip_endpoint::from_string("127.0.0.1:4242"));
+        sock.bind(*from_string<net::ip_endpoint>("127.0.0.1:4242"));
         std::array<std::byte, 64> buffer{};
         fmt::print("listener {} listening...\n", id);
         auto [bytes_received, from] =
@@ -117,7 +113,7 @@ TEST_CASE("udp reuse address", "[g6::net::udp]") {
         [&]() -> task<size_t> {
             auto sock = net::open_socket(ctx, net::proto::udp);
             const char buffer[] = {"hello world !!!"};
-            const auto ep = *net::ip_endpoint::from_string("127.0.0.1:4242");
+            const auto ep = *from_string<net::ip_endpoint>("127.0.0.1:4242");
             const auto bytes = as_bytes(std::span{buffer});
             size_t bytes_sent = 0;
             for (size_t ii = 0; ii < stop_source.threshold(); ++ii) {
@@ -145,8 +141,8 @@ TEST_CASE("udp multicast", "[g6::net::udp]") {
         try {
             auto sock = net::open_socket(ctx, net::proto::udp);
             sock.setopt<net::socket_options::reuse_address>(true);
-            sock.bind(*net::ip_endpoint::from_string("127.0.0.1:4242"));
-            sock.setopt<net::socket_options::ip::add_membership>(net::ip_address::from_string("224.0.0.1")->to_ipv4(),
+            sock.bind(*from_string<net::ip_endpoint>("127.0.0.1:4242"));
+            sock.setopt<net::socket_options::ip::add_membership>(from_string<net::ip_address>("224.0.0.1")->to_ipv4(),
                                                                  sock.local_endpoint()->address().to_ipv4());
             sock.setopt<net::socket_options::ip::multicast_loop>(true);
             std::array<std::byte, 64> buffer{};
@@ -165,9 +161,9 @@ TEST_CASE("udp multicast", "[g6::net::udp]") {
         [&]() -> task<size_t> {
             try {
                 auto sock = net::open_socket(ctx, net::proto::udp);
-                sock.bind(*net::ip_endpoint::from_string("127.0.0.1:0"));
+                sock.bind(*from_string<net::ip_endpoint>("127.0.0.1:0"));
                 const char buffer[] = {"hello world !!!"};
-                const auto ep = *net::ip_endpoint::from_string("224.0.0.1:4242");
+                const auto ep = *from_string<net::ip_endpoint>("224.0.0.1:4242");
                 const auto bytes = as_bytes(std::span{buffer});
                 co_await schedule_after(ctx, 100ms);
                 auto bytes_sent = co_await net::async_send_to(sock, bytes, ep);

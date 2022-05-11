@@ -1,6 +1,6 @@
 #pragma once
 
-#include <g6/config.hpp>
+#include <g6/coro/config.hpp>
 
 #if G6_OS_WINDOWS
 #define NOMINMAX

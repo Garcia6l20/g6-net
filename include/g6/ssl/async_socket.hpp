@@ -12,7 +12,7 @@
 #include <g6/net/async_socket.hpp>
 #include <g6/net/ip_endpoint.hpp>
 
-#include <g6/task.hpp>
+#include <g6/coro/task.hpp>
 
 #include <utility>
 

@@ -4,12 +4,10 @@
 #include <g6/format.hpp>
 #include <g6/from_string.hpp>
 
-#include <g6/io_context.hpp>
-#include <g6/task.hpp>
+#include <g6/coro/io_context.hpp>
+#include <g6/coro/task.hpp>
 
 #include <g6/io/io_cpo.hpp>
-
-#include <g6/cpo/file.hpp>
 
 #include <g6/net/ip_endpoint.hpp>
 #include <g6/net/net_cpo.hpp>

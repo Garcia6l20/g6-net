@@ -1,10 +1,7 @@
 #pragma once
 
-#include <cstring>
 
-#include <utility>
-
-#include <g6/config.hpp>
+#include <g6/coro/config.hpp>
 
 #if G6_OS_WINDOWS
 #define NOMINMAX
@@ -16,7 +13,10 @@
 #endif
 
 #include <g6/net/ip_address.hpp>
+
+#include <cstring>
 #include <stdexcept>
+#include <utility>
 
 namespace g6::net {
 

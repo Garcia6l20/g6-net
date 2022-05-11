@@ -1,11 +1,11 @@
 #include <catch2/catch.hpp>
 
 #include <fmt/core.h>
+#include <g6/coro/sync_wait.hpp>
 #include <g6/io/context.hpp>
 #include <g6/net/ip_endpoint.hpp>
 #include <g6/scope_guard.hpp>
 #include <g6/ssl/async_socket.hpp>
-#include <g6/sync_wait.hpp>
 
 
 #include <cert.hpp>

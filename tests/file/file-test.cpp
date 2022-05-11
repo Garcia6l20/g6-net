@@ -1,8 +1,8 @@
 #include <catch2/catch.hpp>
 
+#include <g6/coro/spawner.hpp>
 #include <g6/io/context.hpp>
 #include <g6/scope_guard.hpp>
-#include <g6/spawner.hpp>
 
 
 #include <fmt/format.h>

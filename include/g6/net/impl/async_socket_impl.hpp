@@ -1,8 +1,8 @@
 #pragma once
 
 
+#include <g6/coro/io_context.hpp>
 #include <g6/io/config.hpp>
-#include <g6/io_context.hpp>
 #include <g6/net/async_socket.hpp>
 #include <g6/net/ip_endpoint.hpp>
 
@@ -13,7 +13,7 @@
 #if G6_OS_WINDOWS
 #include <MSWSock.h>
 #else
-#include <g6/linux/uring_queue.hpp>
+#include <g6/coro/linux/uring_queue.hpp>
 
 #include <sys/ioctl.h>
 #include <sys/socket.h>
@@ -24,7 +24,7 @@ namespace g6::net {
     namespace detail {
 
         template<typename Operation>
-        class io_operation_base : protected operation_base {
+        class io_operation_base : protected g6::details::io_operation {
         public:
             bool await_ready() const noexcept { return false; }
             auto await_suspend(std::coroutine_handle<> awaiter) {

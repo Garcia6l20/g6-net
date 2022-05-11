@@ -1,6 +1,6 @@
 #pragma once
 
-#include <g6/config.hpp>
+#include <g6/coro/config.hpp>
 
 #if G6_OS_LINUX
 #if not defined(G6_NO_IO_URING) and __has_include(<liburing.h>)

@@ -2,7 +2,7 @@
 
 #include <g6/io/context.hpp>
 
-#include <g6/sync_wait.hpp>
+#include <g6/coro/sync_wait.hpp>
 
 #include <source_location>
 #include <span>

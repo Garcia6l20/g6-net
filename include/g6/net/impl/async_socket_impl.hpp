@@ -65,7 +65,7 @@ namespace g6::net {
                                                              reinterpret_cast<_OVERLAPPED *>(this));
                                          static_cast<Operation &>(*this).op_cancelled();
 #else
-                                         (void)context_.io_queue().transaction(reinterpret_cast<g6::details::io_message&>(*this)).cancel().commit();
+                                         (void)context_.io_queue().transaction(*this).cancel().commit();
 #endif
                                      }} {
             }
@@ -81,10 +81,7 @@ namespace g6::net {
         class send_to_sender : public io_operation_base<send_to_sender> {
         public:
             bool start_op() noexcept {
-                return context_.io_queue()
-                    .transaction(reinterpret_cast<g6::details::io_message &>(*this))
-                    .sendmsg(socket_.get_fd(), msghdr_)
-                    .commit();
+                return context_.io_queue().transaction(*this).sendmsg(socket_.get_fd(), msghdr_).commit();
             }
 
             auto op_result() noexcept { return size_t(this->byte_count_); }
@@ -107,7 +104,7 @@ namespace g6::net {
         public:
             bool start_op() noexcept {
                 return context_.io_queue()
-                    .transaction(reinterpret_cast<g6::details::io_message &>(*this))
+                    .transaction(*this)
                     .send(socket_.get_fd(), buffer_.data(), buffer_.size_bytes())
                     .commit();
             }
@@ -125,10 +122,7 @@ namespace g6::net {
         class recv_from_sender : public io_operation_base<recv_from_sender> {
         public:
             bool start_op() noexcept {
-                return context_.io_queue()
-                    .transaction(reinterpret_cast<g6::details::io_message &>(*this))
-                    .recvmsg(socket_.get_fd(), msghdr_)
-                    .commit();
+                return context_.io_queue().transaction(*this).recvmsg(socket_.get_fd(), msghdr_).commit();
             }
 
             auto op_result() noexcept {
@@ -152,7 +146,7 @@ namespace g6::net {
         public:
             bool start_op() noexcept {
                 return context_.io_queue()
-                    .transaction(reinterpret_cast<g6::details::io_message &>(*this))
+                    .transaction(*this)
                     .recv(socket_.get_fd(), buffer_.data(), buffer_.size_bytes())
                     .commit();
             }
@@ -171,7 +165,7 @@ namespace g6::net {
         public:
             bool start_op() noexcept {
                 return context_.io_queue()
-                    .transaction(reinterpret_cast<g6::details::io_message &>(*this))
+                    .transaction(*this)
                     .accept(socket_.get_fd(), &sockaddr_storage_, &sockaddr_storage_len_, 0)
                     .commit();
             }
@@ -194,7 +188,7 @@ namespace g6::net {
         public:
             bool start_op() noexcept {
                 return context_.io_queue()
-                    .transaction(reinterpret_cast<g6::details::io_message &>(*this))
+                    .transaction(*this)
                     .connect(socket_.get_fd(), &sockaddr_storage_, sockaddr_storage_len_)
                     .commit();
             }

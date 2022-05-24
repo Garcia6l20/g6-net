@@ -48,7 +48,13 @@ add_library(${PROJECT_NAME}
   )
 add_library(g6::net ALIAS ${PROJECT_NAME})
 target_include_directories(${PROJECT_NAME} PUBLIC include)
-target_link_libraries(${PROJECT_NAME} PUBLIC g6::coro fmt::fmt MbedTLS::MbedTLS ctre::ctre)
+
+if (NOT TARGET MbedTLS::MbedTLS)
+  add_library(MbedTLS::MbedTLS INTERFACE IMPORTED GLOBAL)
+  target_link_libraries(MbedTLS::MbedTLS INTERFACE MbedTLS::mbedcrypto MbedTLS::mbedx509 MbedTLS::mbedtls)
+endif()
+
+target_link_libraries(${PROJECT_NAME} PUBLIC g6::coro fmt::fmt MbedTLS::MbedTLS)
 
 option(G6_NO_IO_URING "Disable IO uring as default context" OFF)
 if (G6_NO_IO_URING)

@@ -62,7 +62,7 @@ namespace g6::ssl
 			{
 				throw std::system_error{ error,
 										 ssl::error_category,
-										 "mbedtls_x509_crt_parse_path" };
+										 "mbedtls_x509_crt_parse" };
 			}
 		}
 

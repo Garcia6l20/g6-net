@@ -11,7 +11,7 @@ namespace g6::ssl {
         if (auto err = mbedtls_pk_encrypt(ctx_.get(), reinterpret_cast<const uint8_t *>(plain_data.data()),
                                           plain_data.size_bytes(), reinterpret_cast<uint8_t *>(encrypted_data.data()),
                                           &output_size, encrypted_data.size_bytes(), mbedtls_ctr_drbg_random,
-                                          &context.drbg_context());
+                                          &detail::context::instance().drbg_context());
             err != 0) {
             throw std::system_error(err, ssl::error_category);
         }
@@ -24,7 +24,7 @@ namespace g6::ssl {
         if (auto err = mbedtls_pk_decrypt(ctx_.get(), reinterpret_cast<const uint8_t *>(encrypted_data.data()),
                                           encrypted_data.size_bytes(), reinterpret_cast<uint8_t *>(plain_data.data()),
                                           &output_size, plain_data.size_bytes(), mbedtls_ctr_drbg_random,
-                                          &context.drbg_context());
+                                          &detail::context::instance().drbg_context());
             err != 0) {
             throw std::system_error(err, ssl::error_category);
         }

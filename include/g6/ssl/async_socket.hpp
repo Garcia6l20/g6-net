@@ -140,14 +140,14 @@ namespace g6::ssl {
                 throw std::system_error{error, ssl::error_category, "mbedtls_ssl_config_defaults"};
             }
 
-            mbedtls_ssl_conf_ca_chain(ssl_config_.get(), &ssl::context.ca_certs().chain(), nullptr);
+            mbedtls_ssl_conf_ca_chain(ssl_config_.get(), &detail::context::instance().ca_certs().chain(), nullptr);
 
             // default:
             //  - server: dont verify clients
             //  - client: verify server
             set_peer_verify_mode(verify_mode_);
 
-            mbedtls_ssl_conf_rng(ssl_config_.get(), mbedtls_ctr_drbg_random, &ssl::context.drbg_context());
+            mbedtls_ssl_conf_rng(ssl_config_.get(), mbedtls_ctr_drbg_random, &detail::context::instance().drbg_context());
 
             if (certificate_) {
                 assert(key_);
@@ -223,14 +223,14 @@ namespace g6::ssl {
                 } else if (result == MBEDTLS_ERR_SSL_WANT_WRITE) {
                     socket.to_send_.actual_len = co_await net::async_send(
                         net_sock, as_bytes(std::span{socket.to_send_.buf, socket.to_send_.len}), stop);
-                } else if (result == MBEDTLS_ERR_SSL_PEER_VERIFY_FAILED) {
+                } else if (result == MBEDTLS_ERR_ECP_VERIFY_FAILED) {
                     if (uint32_t flags = mbedtls_ssl_get_verify_result(ssl_ctx); flags != 0) {
                         char vrfy_buf[1024];
                         int res = mbedtls_x509_crt_verify_info(vrfy_buf, sizeof(vrfy_buf), "", flags);
                         if (res < 0) {
                             throw std::system_error{res, ssl::error_category, "mbedtls_x509_crt_verify_info"};
                         } else if (res) {
-                            throw std::system_error{MBEDTLS_ERR_SSL_PEER_VERIFY_FAILED, ssl::error_category,
+                            throw std::system_error{MBEDTLS_ERR_ECP_VERIFY_FAILED, ssl::error_category,
                                                     std::string{vrfy_buf, size_t(res - 1)}};
                         }
                     }

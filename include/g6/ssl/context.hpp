@@ -91,10 +91,11 @@ namespace g6::ssl
 				mbedtls_ctr_drbg_free(&ctr_drbg_context_);
 			}
 
-			static auto instance() { return context{}; }
+			static auto &instance() {
+				static context ctx{};
+				return ctx;
+			}
 		};
 	}  // namespace detail
-
-	inline detail::context context = detail::context::instance();
 
 }  // namespace g6::ssl

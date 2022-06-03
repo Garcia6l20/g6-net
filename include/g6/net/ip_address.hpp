@@ -27,8 +27,8 @@ namespace g6::net {
         ip_address(ipv6_address address) noexcept;
 
         family family() const noexcept { return m_family; }
-        [[nodiscard]] bool is_ipv4() const noexcept { return m_family == family::ipv4; }
-        [[nodiscard]] bool is_ipv6() const noexcept { return m_family == family::ipv6; }
+        [[nodiscard]] constexpr bool is_ipv4() const noexcept { return m_family == family::ipv4; }
+        [[nodiscard]] constexpr bool is_ipv6() const noexcept { return m_family == family::ipv6; }
 
         [[nodiscard]] const ipv4_address &to_ipv4() const;
         [[nodiscard]] const ipv6_address &to_ipv6() const;
@@ -48,8 +48,24 @@ namespace g6::net {
         }
 
 
-        bool operator==(const ip_address &rhs) const noexcept = default;
-        constexpr auto operator<=>(const ip_address &rhs) const noexcept = default;
+        constexpr bool operator==(const ip_address &rhs) const noexcept {
+            if (is_ipv4() != rhs.is_ipv4()) {
+                return false;
+            } else if (is_ipv4()) {
+                return m_ipv4 == rhs.m_ipv4;
+            } else {
+                return m_ipv6 == rhs.m_ipv6;
+            }
+        }
+        constexpr auto operator<=>(const ip_address &rhs) const noexcept {
+            if (is_ipv4() != rhs.is_ipv4()) {
+                return std::strong_ordering::less;
+            } else if (is_ipv4()) {
+                return m_ipv4 <=> rhs.m_ipv4;
+            } else {
+                return m_ipv6 <=> rhs.m_ipv6;
+            }
+        }
 
     private:
         union {

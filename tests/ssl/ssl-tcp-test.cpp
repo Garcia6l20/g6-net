@@ -2,11 +2,11 @@
 
 #include <fmt/core.h>
 #include <g6/coro/sync_wait.hpp>
-#include <g6/io/context.hpp>
 #include <g6/net/ip_endpoint.hpp>
 #include <g6/scope_guard.hpp>
-#include <g6/ssl/async_socket.hpp>
 
+#include <g6/io/context.hpp>
+#include <g6/ssl/async_socket.hpp>
 
 #include <cert.hpp>
 
@@ -35,9 +35,9 @@ TEST_CASE("ssl tcp tx/rx test", "[g6::ssl::tcp]") {
             auto [session, client_address] = co_await net::async_accept(server, stop_source.get_token());
             char buffer[1024]{};
             try {
-                auto received = co_await net::async_recv(session, as_writable_bytes(std::span{buffer}));
+                auto received = co_await net::async_recv(session, std::span{buffer});
                 fmt::print("server received {} bytes\n", received);
-                co_await net::async_send(session, as_bytes(std::span{buffer, received}));
+                co_await net::async_send(session, std::span{buffer, received});
                 co_return received;
             } catch (std::system_error &error) {
                 fmt::print("server error: {}\n", error.what());
@@ -53,10 +53,10 @@ TEST_CASE("ssl tcp tx/rx test", "[g6::ssl::tcp]") {
             client.set_verify_flags(ssl::verify_flags::allow_untrusted);
             co_await net::async_connect(client, server_endpoint);
             const char buffer[] = {"hello world !!!"};
-            auto sent = co_await net::async_send(client, as_bytes(std::span{buffer}));
+            auto sent = co_await net::async_send(client, std::span{buffer});
             fmt::print("client sent: {} bytes\n", sent);
             char rx_buffer[64];
-            auto rx_bytes = co_await net::async_recv(client, as_writable_bytes(std::span{rx_buffer}));
+            auto rx_bytes = co_await net::async_recv(client, std::span{rx_buffer});
             REQUIRE(std::memcmp(buffer, rx_buffer, rx_bytes) == 0);
             co_return sent;
         }(),

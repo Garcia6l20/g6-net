@@ -75,6 +75,81 @@ namespace g6::ssl {
         co_await ssl::async_encrypt(socket, stop);
     }
 
+    task<void> tag_invoke(tag_t<ssl::async_encrypt>, ssl::async_socket &socket, std::stop_token stop = {}) {
+        auto &net_sock = static_cast<net::async_socket &>(socket);
+        auto *ssl_ctx = socket.ssl_context_.get();
+        while ((not socket.encrypted_) and (not stop.stop_requested())) {
+            int result = mbedtls_ssl_handshake(ssl_ctx);
+            if (result == MBEDTLS_ERR_SSL_WANT_READ) {
+                socket.to_receive_.actual_len = co_await net::async_recv(
+                    net_sock, std::span{socket.to_receive_.buf, socket.to_receive_.len}, std::stop_token{stop});
+            } else if (result == MBEDTLS_ERR_SSL_WANT_WRITE) {
+                socket.to_send_.actual_len = co_await net::async_send(
+                    net_sock, std::span{socket.to_send_.buf, socket.to_send_.len}, stop);
+            } else if (result == MBEDTLS_ERR_ECP_VERIFY_FAILED) {
+                if (uint32_t flags = mbedtls_ssl_get_verify_result(ssl_ctx); flags != 0) {
+                    char vrfy_buf[1024];
+                    int res = mbedtls_x509_crt_verify_info(vrfy_buf, sizeof(vrfy_buf), "", flags);
+                    if (res < 0) {
+                        throw std::system_error{res, ssl::error_category, "mbedtls_x509_crt_verify_info"};
+                    } else if (res) {
+                        throw std::system_error{MBEDTLS_ERR_ECP_VERIFY_FAILED, ssl::error_category,
+                                                std::string{vrfy_buf, size_t(res - 1)}};
+                    }
+                }
+                socket.encrypted_ = true;
+            } else if (result != 0) {
+                throw std::system_error(result, ssl::error_category, "mbedtls_ssl_handshake");
+            } else {
+                socket.encrypted_ = true;
+            }
+        }
+    }
+
+    task<size_t> tag_invoke(tag_t<net::async_recv>, ssl::async_socket &socket, std::span<std::byte> buffer,
+                            std::stop_token stop = {}) {
+        assert(socket.encrypted_);
+        auto &net_sock = static_cast<net::async_socket &>(socket);
+        auto *ssl_ctx = socket.ssl_context_.get();
+        while (not stop.stop_requested()) {
+            auto result = mbedtls_ssl_read(ssl_ctx, reinterpret_cast<uint8_t *>(buffer.data()), buffer.size());
+            if (result == MBEDTLS_ERR_SSL_WANT_READ) {
+                assert(socket.to_receive_);// ensure buffer/len properly setup
+                socket.to_receive_.actual_len = co_await net::async_recv(
+                    net_sock, std::span{socket.to_receive_.buf, socket.to_receive_.len}, stop);
+            } else if (result == MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY) {
+                co_return 0;
+            } else if (result < 0) {
+                throw std::system_error(result, ssl::error_category, "mbedtls_ssl_read");
+            } else {
+                co_return result;
+            }
+        }
+        co_return 0;
+    }
+
+    task<size_t> tag_invoke(tag_t<net::async_send>, ssl::async_socket &socket, std::span<const std::byte> buffer,
+                            std::stop_token stop = {}) {
+        assert(socket.encrypted_);
+        auto &net_sock = static_cast<net::async_socket &>(socket);
+        auto *ssl_ctx = socket.ssl_context_.get();
+        size_t offset = 0;
+        while ((not stop.stop_requested()) and (offset < buffer.size())) {
+            int result = mbedtls_ssl_write(ssl_ctx, reinterpret_cast<const uint8_t *>(buffer.data()) + offset,
+                                           buffer.size() - offset);
+            if (result == MBEDTLS_ERR_SSL_WANT_WRITE) {
+                assert(socket.to_send_);// ensure buffer/len properly setup
+                socket.to_send_.actual_len = co_await net::async_send(
+                    net_sock, std::span{socket.to_send_.buf, socket.to_send_.len}, stop);
+            } else if (result < 0) {
+                throw std::system_error(result, ssl::error_category, "mbedtls_ssl_write");
+            } else {
+                offset += result;
+            }
+        }
+        co_return offset;
+    }
+
 }// namespace g6::ssl
 
 namespace g6::io {

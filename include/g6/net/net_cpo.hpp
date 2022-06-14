@@ -1,7 +1,7 @@
 #pragma once
 
-#include <g6/tag_invoke>
 #include <g6/coro/task.hpp>
+#include <g6/tag_invoke>
 
 #include <span>
 
@@ -11,6 +11,8 @@ namespace g6::net {
 
     G6_MAKE_CPO(pending_bytes)
     G6_MAKE_CPO(has_pending_data)
+
+    G6_MAKE_CPO(async_close)
 
     G6_MAKE_CPO(async_accept)
     G6_MAKE_CPO(async_connect)
@@ -34,6 +36,14 @@ namespace g6::net {
             {cont.size()};
         }) {
             return this->tag_invoke(sock, as_bytes(std::span{cont.data(), cont.size()}), std::forward<Args>(args)...);
+        }
+
+        // some protocols can send message with empty data thus, this template function will be used
+        template<typename Sock, typename... Args>
+        requires g6::tag_invocable_c<Concrete, Sock &, std::span<std::byte const>, Args &&...> auto
+        operator()(Sock &sock, Args &&...args) const noexcept(
+            g6::nothrow_tag_invocable_c<Concrete, Sock &, std::span<std::byte const>, Args &&...>) requires(sizeof...(Args) > 0) {
+            return this->tag_invoke(sock, std::span<std::byte const, 0>{}, std::forward<Args>(args)...);
         }
     };
 
@@ -73,6 +83,7 @@ namespace g6::net {
     constexpr struct _async_recv : _async_recv_base<_async_recv> {
     } async_recv{};
 
-    constexpr struct _async_recv_from : _async_recv_base<_async_recv_from> { } async_recv_from{};
-//    
+    constexpr struct _async_recv_from : _async_recv_base<_async_recv_from> {
+    } async_recv_from{};
+    //
 }// namespace g6::net

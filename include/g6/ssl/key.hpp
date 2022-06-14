@@ -20,7 +20,7 @@ namespace g6::ssl {
     }
 
     template<key_type type_>
-    class key final {
+    class key {
     public:
         explicit key() noexcept = default;
 
@@ -51,8 +51,8 @@ namespace g6::ssl {
     private:
         detail::mbedtls_pk_context_ptr ctx_ = detail::mbedtls_pk_context_ptr::make();
     };
-    using private_key = key<key_type::private_>;
-    using public_key = key<key_type::public_>;
+    class private_key final : public key<key_type::private_> {};
+    class public_key final : public key<key_type::private_> {};
 }// namespace g6::ssl
 
 #include <g6/ssl/impl/pk_impl.hpp>

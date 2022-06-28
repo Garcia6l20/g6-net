@@ -47,7 +47,9 @@ add_library(${PROJECT_NAME}
   ${${PROJECT_NAME}_headers}
   )
 add_library(g6::net ALIAS ${PROJECT_NAME})
-target_include_directories(${PROJECT_NAME} PUBLIC include)
+target_include_directories(${PROJECT_NAME} PUBLIC
+  $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
 
 if (NOT TARGET MbedTLS::MbedTLS)
   add_library(MbedTLS::MbedTLS INTERFACE IMPORTED GLOBAL)
@@ -73,3 +75,9 @@ enable_testing()
 if (BUILD_TESTING)
   add_subdirectory(tests)
 endif()
+
+install(TARGETS ${PROJECT_NAME} 
+  LIBRARY DESTINATION lib
+  ARCHIVE DESTINATION lib)
+install(DIRECTORY include/ DESTINATION include
+  FILES_MATCHING PATTERN *)

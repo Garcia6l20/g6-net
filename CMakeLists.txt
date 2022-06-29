@@ -46,6 +46,8 @@ add_library(${PROJECT_NAME}
 
   ${${PROJECT_NAME}_headers}
   )
+set_target_properties(${PROJECT_NAME} PROPERTIES
+  EXPORT_NAME net)
 add_library(g6::net ALIAS ${PROJECT_NAME})
 target_include_directories(${PROJECT_NAME} PUBLIC
   $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>

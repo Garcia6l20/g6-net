@@ -11,7 +11,7 @@
 
 namespace g6::ssl
 {
-	struct error_category_t final : std::error_category {
+	inline struct error_category_t final : std::error_category {
         [[nodiscard]] const char* name() const noexcept final { return "ssl"; }
         [[nodiscard]] std::string message(int error) const noexcept final {
 			std::array<char, 128> error_buf{};

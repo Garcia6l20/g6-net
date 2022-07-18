@@ -192,7 +192,7 @@ namespace g6::ssl {
                                             ssl::certificate const &, ssl::private_key const &);
 
         friend task<void> tag_invoke(tag_t<net::async_connect>, ssl::async_socket &socket,
-                                     const net::ip_endpoint &endpoint, std::stop_token stop);
+                                     const net::ip_endpoint &endpoint);
 
         friend ssl::async_socket tag_invoke(tag_t<net::open_socket>, auto &ctx, ssl::detail::tags::tcp_client);
 
@@ -212,7 +212,7 @@ namespace g6::ssl {
          * @param socket
          * @return The encryption task
          */
-        friend task<void> tag_invoke(tag_t<ssl::async_encrypt>, ssl::async_socket &socket, std::stop_token stop);
+        friend task<void> tag_invoke(tag_t<ssl::async_encrypt>, ssl::async_socket &socket);
 
         /** @brief Send CPO
          *
@@ -222,7 +222,7 @@ namespace g6::ssl {
          * @co_return       The sent size.
          */
         friend task<size_t> tag_invoke(tag_t<net::async_send>, ssl::async_socket &socket,
-                                       std::span<const std::byte> buffer, std::stop_token stop);
+                                       std::span<const std::byte> buffer);
 
         /** @brief Recv CPO
          *
@@ -230,11 +230,10 @@ namespace g6::ssl {
          * @param buffer
          * @return
          */
-        friend task<size_t> tag_invoke(tag_t<net::async_recv>, ssl::async_socket &socket, std::span<std::byte> buffer,
-                                       std::stop_token stop);
+        friend task<size_t> tag_invoke(tag_t<net::async_recv>, ssl::async_socket &socket, std::span<std::byte> buffer);
 
         friend task<std::tuple<async_socket, net::ip_endpoint>>
-        tag_invoke(tag_t<net::async_accept>, ssl::async_socket &socket, std::stop_token stop);
+        tag_invoke(tag_t<net::async_accept>, ssl::async_socket &socket);
 
         connection_mode mode_;
         std::optional<ssl::certificate> certificate_{};

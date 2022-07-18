@@ -57,35 +57,33 @@ namespace g6::ssl {
         return {ctx, fd, ssl::async_socket::connection_mode::client, certificate, pk};
     }
 
-    inline task<std::tuple<async_socket, net::ip_endpoint>> tag_invoke(tag_t<net::async_accept>, ssl::async_socket &socket,
-                                                                std::stop_token stop = {}) {
-        auto [in_sock, endpoint] = co_await net::async_accept(static_cast<net::async_socket &>(socket), stop);
+    inline task<std::tuple<async_socket, net::ip_endpoint>> tag_invoke(tag_t<net::async_accept>, ssl::async_socket &socket) {
+        auto [in_sock, endpoint] = co_await net::async_accept(static_cast<net::async_socket &>(socket));
         ssl::async_socket ssl_sock{std::move(in_sock), ssl::async_socket::connection_mode::server, socket.certificate_,
                                    socket.key_};
         ssl_sock.host_name(socket.hostname_);
         ssl_sock.verify_flags_ = socket.verify_flags_;
         ssl_sock.verify_mode_ = socket.verify_mode_;
-        co_await ssl::async_encrypt(ssl_sock, stop);
+        co_await ssl::async_encrypt(ssl_sock);
         co_return std::make_tuple(std::move(ssl_sock), std::move(endpoint));
     }
 
-    inline task<void> tag_invoke(tag_t<net::async_connect>, ssl::async_socket &socket, const net::ip_endpoint &endpoint,
-                          std::stop_token stop = {}) {
-        co_await net::async_connect(static_cast<net::async_socket &>(socket), endpoint, stop);
-        co_await ssl::async_encrypt(socket, stop);
+    inline task<void> tag_invoke(tag_t<net::async_connect>, ssl::async_socket &socket, const net::ip_endpoint &endpoint) {
+        co_await net::async_connect(static_cast<net::async_socket &>(socket), endpoint);
+        co_await ssl::async_encrypt(socket);
     }
 
-    inline task<void> tag_invoke(tag_t<ssl::async_encrypt>, ssl::async_socket &socket, std::stop_token stop = {}) {
+    inline task<void> tag_invoke(tag_t<ssl::async_encrypt>, ssl::async_socket &socket) {
         auto &net_sock = static_cast<net::async_socket &>(socket);
         auto *ssl_ctx = socket.ssl_context_.get();
-        while ((not socket.encrypted_) and (not stop.stop_requested())) {
+        while (not socket.encrypted_) {
             int result = mbedtls_ssl_handshake(ssl_ctx);
             if (result == MBEDTLS_ERR_SSL_WANT_READ) {
                 socket.to_receive_.actual_len = co_await net::async_recv(
-                    net_sock, std::span{socket.to_receive_.buf, socket.to_receive_.len}, std::stop_token{stop});
+                    net_sock, std::span{socket.to_receive_.buf, socket.to_receive_.len});
             } else if (result == MBEDTLS_ERR_SSL_WANT_WRITE) {
                 socket.to_send_.actual_len = co_await net::async_send(
-                    net_sock, std::span{socket.to_send_.buf, socket.to_send_.len}, stop);
+                    net_sock, std::span{socket.to_send_.buf, socket.to_send_.len});
             } else if (result == MBEDTLS_ERR_ECP_VERIFY_FAILED) {
                 if (uint32_t flags = mbedtls_ssl_get_verify_result(ssl_ctx); flags != 0) {
                     char vrfy_buf[1024];
@@ -106,17 +104,16 @@ namespace g6::ssl {
         }
     }
 
-    inline task<size_t> tag_invoke(tag_t<net::async_recv>, ssl::async_socket &socket, std::span<std::byte> buffer,
-                            std::stop_token stop = {}) {
+    inline task<size_t> tag_invoke(tag_t<net::async_recv>, ssl::async_socket &socket, std::span<std::byte> buffer) {
         assert(socket.encrypted_);
         auto &net_sock = static_cast<net::async_socket &>(socket);
         auto *ssl_ctx = socket.ssl_context_.get();
-        while (not stop.stop_requested()) {
+        while (true) {
             auto result = mbedtls_ssl_read(ssl_ctx, reinterpret_cast<uint8_t *>(buffer.data()), buffer.size());
             if (result == MBEDTLS_ERR_SSL_WANT_READ) {
                 assert(socket.to_receive_);// ensure buffer/len properly setup
                 socket.to_receive_.actual_len = co_await net::async_recv(
-                    net_sock, std::span{socket.to_receive_.buf, socket.to_receive_.len}, stop);
+                    net_sock, std::span{socket.to_receive_.buf, socket.to_receive_.len});
             } else if (result == MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY) {
                 co_return 0;
             } else if (result < 0) {
@@ -128,19 +125,18 @@ namespace g6::ssl {
         co_return 0;
     }
 
-    inline task<size_t> tag_invoke(tag_t<net::async_send>, ssl::async_socket &socket, std::span<const std::byte> buffer,
-                            std::stop_token stop = {}) {
+    inline task<size_t> tag_invoke(tag_t<net::async_send>, ssl::async_socket &socket, std::span<const std::byte> buffer) {
         assert(socket.encrypted_);
         auto &net_sock = static_cast<net::async_socket &>(socket);
         auto *ssl_ctx = socket.ssl_context_.get();
         size_t offset = 0;
-        while ((not stop.stop_requested()) and (offset < buffer.size())) {
+        while (offset < buffer.size()) {
             int result = mbedtls_ssl_write(ssl_ctx, reinterpret_cast<const uint8_t *>(buffer.data()) + offset,
                                            buffer.size() - offset);
             if (result == MBEDTLS_ERR_SSL_WANT_WRITE) {
                 assert(socket.to_send_);// ensure buffer/len properly setup
                 socket.to_send_.actual_len = co_await net::async_send(
-                    net_sock, std::span{socket.to_send_.buf, socket.to_send_.len}, stop);
+                    net_sock, std::span{socket.to_send_.buf, socket.to_send_.len});
             } else if (result < 0) {
                 throw std::system_error(result, ssl::error_category, "mbedtls_ssl_write");
             } else {

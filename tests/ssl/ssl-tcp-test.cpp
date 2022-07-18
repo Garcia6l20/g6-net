@@ -32,7 +32,7 @@ TEST_CASE("ssl tcp tx/rx test", "[g6::ssl::tcp]") {
     auto [server_result, client_result, _] = sync_wait(
         [&]() -> task<size_t> {
             server.listen();
-            auto [session, client_address] = co_await net::async_accept(server, stop_source.get_token());
+            auto [session, client_address] = co_await net::async_accept(server);
             char buffer[1024]{};
             try {
                 auto received = co_await net::async_recv(session, std::span{buffer});

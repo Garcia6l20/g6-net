@@ -2,6 +2,7 @@
 
 #include <fmt/format.h>
 
+#include <g6/coro/cancel_after.hpp>
 #include <g6/coro/sync_wait.hpp>
 
 #include <g6/io/context.hpp>
@@ -15,25 +16,20 @@ using namespace std::chrono_literals;
 
 TEST_CASE("tcp stop server test", "[g6::net::tcp]") {
     io::context ctx{};
-    std::stop_source stop_accept{};
     std::stop_source stop_run{};
 
-    spawner{[&]() -> task<void> {
+    REQUIRE_THROWS_AS(//
+        sync_wait(
+            [&]() -> task<void> {
                 auto _ = scope_guard{[&] { stop_run.request_stop(); }};
                 auto sock = net::open_socket(ctx, net::proto::tcp);
                 sock.bind(*from_string<net::ip_endpoint>("127.0.0.1:0"));
                 sock.listen();
-                try {
-                    auto [client, client_address] = co_await net::async_accept(sock, stop_accept.get_token());
-                    FAIL("Should have been cancelled");
-                } catch (std::system_error const &err) { REQUIRE(err.code() == std::errc::operation_canceled); }
-            }(),
-            [&]() -> task<void> {
-                co_await schedule_after(ctx, 100ms);
-                stop_accept.request_stop();
-            }(),
-            async_exec(ctx, stop_run.get_token())}
-        .sync_wait();
+                auto [client, client_address] = co_await net::async_accept(sock);
+                FAIL("Should have been cancelled");
+            }() | cancel_after(ctx, 100ms),
+            async_exec(ctx, stop_run.get_token())),
+        operation_cancelled);
 }
 
 TEST_CASE("tcp tx/rx test", "[g6::net::tcp]") {
@@ -44,7 +40,7 @@ TEST_CASE("tcp tx/rx test", "[g6::net::tcp]") {
     server.bind(*from_string<net::ip_endpoint>("127.0.0.1:0"));
     auto server_endpoint = *server.local_endpoint();
 
-    auto [received, sent, _] = spawner{
+    auto [received, sent, _] = sync_wait(
         [&]() -> task<size_t> {
             server.listen();
             auto [client, client_address] = co_await net::async_accept(server);
@@ -68,8 +64,7 @@ TEST_CASE("tcp tx/rx test", "[g6::net::tcp]") {
             REQUIRE(std::memcmp(rx_buffer, buffer, rx_bytes) == 0);
             co_return sent;
         }(),
-        async_exec(ctx, stop_source.get_token())}
-                                   .sync_wait();
+        async_exec(ctx, stop_source.get_token()));
 
     REQUIRE(sent == received);
 }

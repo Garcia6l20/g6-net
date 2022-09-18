@@ -389,7 +389,7 @@ namespace g6::net {
 
                 {
                     using update_context_opt =
-                        net::simple_scoket_option<SOL_SOCKET, SO_UPDATE_ACCEPT_CONTEXT, SOCKET, SOCKET>;
+                        net::simple_socket_option<SOL_SOCKET, SO_UPDATE_ACCEPT_CONTEXT, SOCKET, SOCKET>;
                     // Need to set SO_UPDATE_ACCEPT_CONTEXT after the accept completes
                     // to ensure that ::shutdown() and ::setsockopt() calls work on the
                     // accepted socket.

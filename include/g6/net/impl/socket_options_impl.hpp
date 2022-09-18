@@ -13,7 +13,7 @@ namespace g6::net {
     }// namespace details
 
     template<int so_level, int opt_name, typename UserT, typename ImplT>
-    void simple_scoket_option<so_level, opt_name, UserT, ImplT>::set_impl(auto fd, UserT value) {
+    void simple_socket_option<so_level, opt_name, UserT, ImplT>::set_impl(auto fd, UserT value) {
         auto impl_value = static_cast<ImplT>(value);
         if (setsockopt(fd, so_level, opt_name, reinterpret_cast<const char *>(&impl_value), sizeof(impl_value)) < 0) {
             using namespace std::literals;
@@ -25,7 +25,7 @@ namespace g6::net {
         }
     }
     template<int so_level, int opt_name, typename UserT, typename ImplT>
-    UserT simple_scoket_option<so_level, opt_name, UserT, ImplT>::get_impl(auto fd) {
+    UserT simple_socket_option<so_level, opt_name, UserT, ImplT>::get_impl(auto fd) {
         ImplT impl_value{};
         details::sock_opt_size_t impl_size = sizeof(impl_value);
         if (getsockopt(fd, so_level, opt_name, reinterpret_cast<char *>(&impl_value), &impl_size) < 0) {

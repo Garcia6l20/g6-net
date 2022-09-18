@@ -34,9 +34,9 @@ namespace g6::net {
     };
 
     template<int so_level, int opt_name, typename UserT = bool, typename ImplT = int>
-    class simple_scoket_option : public socket_option<simple_scoket_option<so_level, opt_name, UserT, ImplT>> {
+    class simple_socket_option : public socket_option<simple_socket_option<so_level, opt_name, UserT, ImplT>> {
     private:
-        friend class socket_option<simple_scoket_option<so_level, opt_name, UserT, ImplT>>;
+        friend class socket_option<simple_socket_option<so_level, opt_name, UserT, ImplT>>;
         static void set_impl(auto fd, UserT value);
         template<typename... Args>
         static void set_impl(auto fd, Args &&...args) requires(std::is_constructible_v<UserT, Args...>) {
@@ -56,12 +56,12 @@ namespace g6::net {
 }// namespace g6::net
 
 namespace g6::net::socket_options {
-    using reuse_address = simple_scoket_option<SOL_SOCKET, SO_REUSEADDR>;
+    using reuse_address = simple_socket_option<SOL_SOCKET, SO_REUSEADDR>;
 
 #if G6_OS_WINDOWS
-    using reuse_address_ex = simple_scoket_option<SOL_SOCKET, SO_EXCLUSIVEADDRUSE>;
+    using reuse_address_ex = simple_socket_option<SOL_SOCKET, SO_EXCLUSIVEADDRUSE>;
 #else
-    using reuse_port = simple_scoket_option<SOL_SOCKET, SO_REUSEPORT>;
+    using reuse_port = simple_socket_option<SOL_SOCKET, SO_REUSEPORT>;
 #endif
 
     namespace ip {
@@ -81,10 +81,10 @@ namespace g6::net::socket_options {
             ipv4_address multicast_addr_;
             ipv4_address local_address_;
         };
-        using add_membership = simple_scoket_option<IPPROTO_IP, IP_ADD_MEMBERSHIP, membership, ip_mreq>;
-        using multicast_loop = simple_scoket_option<IPPROTO_IP, IP_MULTICAST_LOOP>;
-        using multicast_ttl = simple_scoket_option<IPPROTO_IP, IP_MULTICAST_TTL, int, int>;
-        using multicast_if = simple_scoket_option<IPPROTO_IP, IP_MULTICAST_IF, ipv4_address, in_addr_t>;
+        using add_membership = simple_socket_option<IPPROTO_IP, IP_ADD_MEMBERSHIP, membership, ip_mreq>;
+        using multicast_loop = simple_socket_option<IPPROTO_IP, IP_MULTICAST_LOOP>;
+        using multicast_ttl = simple_socket_option<IPPROTO_IP, IP_MULTICAST_TTL, int, int>;
+        using multicast_if = simple_socket_option<IPPROTO_IP, IP_MULTICAST_IF, ipv4_address, in_addr_t>;
     }// namespace ip
 
 }// namespace g6::net::socket_options

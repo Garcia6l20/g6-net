@@ -25,12 +25,14 @@ namespace g6::net {
 
         template<typename Operation>
         class net_operation_base : public io_context::operation_base<Operation> {
+            using base = io_context::operation_base<Operation>;
+
         public:
-            template <typename Promise>
+            template<typename Promise>
             auto await_suspend(std::coroutine_handle<Promise> awaiter) {
 #if G6_OS_WINDOWS
                 const bool skipCompletionOnSuccess = socket_.skip_completion_;
-                auto result = io_context::operation_base<Operation>::await_suspend(awaiter);
+                auto result = base::await_suspend(awaiter);
                 if (result == SOCKET_ERROR) {
                     int errorCode = ::WSAGetLastError();
                     if (errorCode != WSA_IO_PENDING) {
@@ -47,13 +49,14 @@ namespace g6::net {
                 // Operation will complete asynchronously.
                 return true;
 #else
-                return io_context::operation_base<Operation>::await_suspend(awaiter);
+                return base::await_suspend(awaiter);
 #endif
             }
 
             explicit net_operation_base(io::context &context, async_socket &socket) noexcept
-                : io_context::operation_base<Operation>{context, socket.get_fd()}, context_{context}, socket_{socket} {
-            }
+                : base{context, socket.get_fd()}, context_{context}, socket_{socket} {}
+            net_operation_base(net_operation_base &&other) noexcept
+                : base{std::move(other)}, context_{other.context_}, socket_{other.socket_} {}
 
         protected:
             io::context &context_;
@@ -71,7 +74,8 @@ namespace g6::net {
 
             explicit send_to_sender(io::context &context, async_socket &socket, const net::ip_endpoint &endpoint,
                                     std::span<const std::byte> buffer) noexcept
-                : net_operation_base<send_to_sender>{context, socket}, iovec_{const_cast<std::byte *>(buffer.data()), buffer.size_bytes()} {
+                : net_operation_base<send_to_sender>{context, socket}, iovec_{const_cast<std::byte *>(buffer.data()),
+                                                                              buffer.size_bytes()} {
                 endpoint.to_sockaddr(sockaddr_storage_);
             }
 
@@ -112,8 +116,12 @@ namespace g6::net {
             }
 
             explicit recv_from_sender(io::context &context, async_socket &socket, std::span<std::byte> buffer) noexcept
-                : net_operation_base<recv_from_sender>{context, socket}, iovec_{buffer.data(),
-                                                                                           buffer.size_bytes()} {}
+                : net_operation_base<recv_from_sender>{context, socket}, iovec_{buffer.data(), buffer.size_bytes()} {}
+
+            recv_from_sender(recv_from_sender &&other) noexcept
+                : net_operation_base<recv_from_sender>{std::move(other)}, iovec_{other.iovec_} {
+                std::memcpy(&sockaddr_storage_, &other.sockaddr_storage_, sizeof(sockaddr_storage_));
+            }
 
         private:
             sockaddr_storage sockaddr_storage_;

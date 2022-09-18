@@ -53,6 +53,11 @@ namespace g6::net {
         friend std::optional<ipv4_address> tag_invoke(tag_t<g6::from_string<ipv4_address>>,
                                                       std::string_view string) noexcept;
 
+        
+        explicit operator uint32_t() noexcept {
+            return std::bit_cast<uint32_t>(m_bytes);
+        }
+
     private:
         alignas(std::uint32_t) std::uint8_t m_bytes[4];
     };

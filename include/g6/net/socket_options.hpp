@@ -83,6 +83,8 @@ namespace g6::net::socket_options {
         };
         using add_membership = simple_scoket_option<IPPROTO_IP, IP_ADD_MEMBERSHIP, membership, ip_mreq>;
         using multicast_loop = simple_scoket_option<IPPROTO_IP, IP_MULTICAST_LOOP>;
+        using multicast_ttl = simple_scoket_option<IPPROTO_IP, IP_MULTICAST_TTL, int, int>;
+        using multicast_if = simple_scoket_option<IPPROTO_IP, IP_MULTICAST_IF, ipv4_address, in_addr_t>;
     }// namespace ip
 
 }// namespace g6::net::socket_options

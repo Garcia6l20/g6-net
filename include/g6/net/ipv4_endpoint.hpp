@@ -13,9 +13,9 @@ namespace g6::net {
     class ipv4_endpoint {
     public:
         // Construct to 0.0.0.0:0
-        ipv4_endpoint() noexcept : m_address(), m_port(0) {}
+        constexpr ipv4_endpoint() noexcept : m_address(), m_port(0) {}
 
-        explicit ipv4_endpoint(ipv4_address address, std::uint16_t port = 0) noexcept
+        explicit constexpr ipv4_endpoint(ipv4_address address, std::uint16_t port = 0) noexcept
             : m_address(address), m_port(port) {}
 
         [[nodiscard]] const ipv4_address &address() const noexcept { return m_address; }

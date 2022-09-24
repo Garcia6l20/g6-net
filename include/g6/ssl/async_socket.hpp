@@ -16,14 +16,20 @@
 
 #include <utility>
 
-//#define G6_SSL_DEBUG
+namespace g6::ssl { namespace detail::tags {
+    struct tcp_server {};
+    struct tcp_client {};
+}}// namespace g6::ssl::detail::tags
+
+namespace g6::io {
+    ssl::async_socket tag_invoke(tag_t<net::open_socket>, g6::io::context &, net::ip_endpoint const &,
+                                 ssl::certificate const &, ssl::private_key const &);
+    ssl::async_socket tag_invoke(tag_t<net::open_socket>, g6::io::context &, ssl::detail::tags::tcp_client);
+    ssl::async_socket tag_invoke(tag_t<net::open_socket>, g6::io::context &, ssl::detail::tags::tcp_server,
+                                 ssl::certificate const &, ssl::private_key const &);
+}// namespace g6::io
 
 namespace g6::ssl {
-
-    namespace detail::tags {
-        struct tcp_server {};
-        struct tcp_client {};
-    }// namespace detail::tags
 
     inline const ssl::detail::tags::tcp_server tcp_server;
     inline const ssl::detail::tags::tcp_client tcp_client;
@@ -59,64 +65,12 @@ namespace g6::ssl {
 
     class async_socket : public net::async_socket {
     private:
-        static void _mbedtls_debug(void *ctx, int level, const char *file, int line, const char *str) noexcept {
-#ifdef G6_SSL_DEBUG
-            static constexpr std::string_view fmt = "[mbedtls-{}] - {}:{}: {}";
-            switch (level) {
-                case 0:// shall not happen - no debug
-                case 1:// error
-                    fmt::print(fmt, "error", file, line, str);
-                    break;
-                case 3:// informational
-                    fmt::print(fmt, "info", file, line, str);
-                    break;
-                case 2:// state change
-                case 4:// verbose
-                default:
-                    fmt::print(fmt, "debug", file, line, str);
-                    break;
-            }
-#endif
-        }
-
-        static int _mbedtls_verify_cert(void *ctx, mbedtls_x509_crt *crt, int depth, uint32_t *flags) noexcept {
-            auto &self = *reinterpret_cast<ssl::async_socket *>(ctx);
-            if ((*flags & MBEDTLS_X509_BADCERT_SKIP_VERIFY) && self.verify_mode_ == peer_verify_mode::none) {
-                *flags &= MBEDTLS_X509_BADCERT_SKIP_VERIFY;
-            }
-            if ((self.verify_flags_ & ssl::verify_flags::allow_untrusted) != ssl::verify_flags::none) {
-                *flags &= ~uint32_t(MBEDTLS_X509_BADCERT_NOT_TRUSTED | MBEDTLS_X509_BADCRL_NOT_TRUSTED);
-            }
-            return 0;
-        }
-
-        static int _mbedtls_send(void *ctx, const uint8_t *buf, size_t len) noexcept {
-            auto &self = *static_cast<ssl::async_socket *>(ctx);
-            if (self.to_send_ == std::tuple{len, buf}) {
-                len = self.to_send_.actual_len;
-                self.to_send_ = {};
-                return int(len);
-            } else {
-                self.to_send_ = {len, buf};
-                return MBEDTLS_ERR_SSL_WANT_WRITE;
-            }
-        }
-        static int _mbedtls_recv(void *ctx, uint8_t *buf, size_t len) noexcept {
-            abort();
-            return MBEDTLS_ERR_SSL_WANT_READ;
-        }
-        static int _mbedtls_recv_timeout(void *ctx, uint8_t *buf, size_t len, uint32_t timeout) noexcept {
-            auto &self = *static_cast<ssl::async_socket *>(ctx);
-            if (self.to_receive_ == std::tuple{len, buf}) {
-                len = self.to_receive_.actual_len;
-                self.to_receive_ = {};
-                return int(len);
-            } else {
-                self.to_receive_ = {len, buf};
-                assert(timeout == 0);
-                return MBEDTLS_ERR_SSL_WANT_READ;
-            }
-        }
+        static void _mbedtls_debug(void *ctx, int level, const char *file, int line, const char *str) noexcept;
+        static int _mbedtls_verify_cert(void *ctx, mbedtls_x509_crt *crt, int depth, uint32_t *flags) noexcept;
+        static int _mbedtls_send(void *ctx, const uint8_t *buf, size_t len) noexcept;
+        static int _mbedtls_recv(void *ctx, uint8_t *buf, size_t len) noexcept;
+        static int _mbedtls_recv_timeout(void *ctx, uint8_t *buf, size_t len, uint32_t timeout) noexcept;
+        void _mbedtls_setup_callbacks();
 
         template<bool const_ = false>
         struct ssl_buf {
@@ -132,80 +86,34 @@ namespace g6::ssl {
 
         enum class connection_mode { client, server };
 
-        void init() {
-            if (auto error = mbedtls_ssl_config_defaults(
-                    ssl_config_.get(), mode_ == connection_mode::server ? MBEDTLS_SSL_IS_SERVER : MBEDTLS_SSL_IS_CLIENT,
-                    MBEDTLS_SSL_TRANSPORT_STREAM, MBEDTLS_SSL_PRESET_DEFAULT);
-                error != 0) {
-                throw std::system_error{error, ssl::error_category, "mbedtls_ssl_config_defaults"};
-            }
-
-            mbedtls_ssl_conf_ca_chain(ssl_config_.get(), &detail::context::instance().ca_certs().chain(), nullptr);
-
-            // default:
-            //  - server: dont verify clients
-            //  - client: verify server
-            set_peer_verify_mode(verify_mode_);
-
-            mbedtls_ssl_conf_rng(ssl_config_.get(), mbedtls_ctr_drbg_random, &detail::context::instance().drbg_context());
-
-            if (certificate_) {
-                assert(key_);
-                if (auto error = mbedtls_ssl_conf_own_cert(ssl_config_.get(), &certificate_->chain(), &key_->ctx());
-                    error != 0) {
-                    throw std::system_error{error, ssl::error_category, "mbedtls_ssl_conf_own_cert"};
-                }
-            }
-
-            _mbedtls_setup_callbacks();
-
-            if (auto error = mbedtls_ssl_setup(ssl_context_.get(), ssl_config_.get()); error != 0) {
-                throw std::system_error{error, ssl::error_category, "mbedtls_ssl_setup"};
-            }
-        }
+        void init();
 
         async_socket(io::context &io_context, socket_handle::handle_t fd, net::socket_protocol proto,
                      connection_mode mode_, std::optional<ssl::certificate> cert, std::optional<ssl::private_key> key,
-                     bool skip_on_success = false)
-            : net::async_socket{io_context, fd, proto, skip_on_success}, mode_{mode_},
-              certificate_{std::move(cert)}, key_{std::move(key)}, verify_mode_{mode_ == connection_mode::server
-                                                                                    ? peer_verify_mode::none
-                                                                                    : peer_verify_mode::required} {
-            init();
-        }
+                     bool skip_on_success = false);
 
         async_socket(net::async_socket &&raw_socket, connection_mode mode_, std::optional<ssl::certificate> cert,
-                     std::optional<ssl::private_key> key)
-            : net::async_socket{std::forward<net::async_socket>(raw_socket)}, mode_{mode_},
-              certificate_{std::move(cert)}, key_{std::move(key)}, verify_mode_{mode_ == connection_mode::server
-                                                                                    ? peer_verify_mode::none
-                                                                                    : peer_verify_mode::required} {
-            init();
-        }
+                     std::optional<ssl::private_key> key);
 
         friend struct detail::accept_sender;
         friend struct detail::connect_sender;
         friend struct detail::recv_sender;
         friend struct detail::send_sender;
 
-        friend ssl::async_socket tag_invoke(tag_t<net::open_socket>, auto &ctx, net::ip_endpoint const &,
-                                            ssl::certificate const &, ssl::private_key const &);
+        friend ssl::async_socket g6::io::tag_invoke(tag_t<net::open_socket>, g6::io::context &ctx,
+                                                    net::ip_endpoint const &, ssl::certificate const &,
+                                                    ssl::private_key const &);
+
+        friend ssl::async_socket g6::io::tag_invoke(tag_t<net::open_socket>, g6::io::context &ctx,
+                                                    ssl::detail::tags::tcp_client);
+
+        friend ssl::async_socket g6::io::tag_invoke(tag_t<net::open_socket>, g6::io::context &ctx,
+                                                    ssl::detail::tags::tcp_server, ssl::certificate const &,
+                                                    ssl::private_key const &);
 
         friend task<void> tag_invoke(tag_t<net::async_connect>, ssl::async_socket &socket,
                                      const net::ip_endpoint &endpoint);
 
-        friend ssl::async_socket tag_invoke(tag_t<net::open_socket>, auto &ctx, ssl::detail::tags::tcp_client);
-
-        friend ssl::async_socket tag_invoke(tag_t<net::open_socket>, auto &ctx, ssl::detail::tags::tcp_server,
-                                            ssl::certificate const &, ssl::private_key const &);
-
-        void _mbedtls_setup_callbacks() {
-            mbedtls_ssl_set_bio(ssl_context_.get(), this, &ssl::async_socket::_mbedtls_send,
-                                &ssl::async_socket::_mbedtls_recv, &ssl::async_socket::_mbedtls_recv_timeout);
-
-            mbedtls_ssl_conf_verify(ssl_config_.get(), &ssl::async_socket::_mbedtls_verify_cert, this);
-            mbedtls_ssl_conf_dbg(ssl_config_.get(), &ssl::async_socket::_mbedtls_debug, this);
-        }
 
         /** @brief Encrypt CPO
          *
@@ -232,8 +140,8 @@ namespace g6::ssl {
          */
         friend task<size_t> tag_invoke(tag_t<net::async_recv>, ssl::async_socket &socket, std::span<std::byte> buffer);
 
-        friend task<std::tuple<async_socket, net::ip_endpoint>>
-        tag_invoke(tag_t<net::async_accept>, ssl::async_socket &socket);
+        friend task<std::tuple<async_socket, net::ip_endpoint>> tag_invoke(tag_t<net::async_accept>,
+                                                                           ssl::async_socket &socket);
 
         connection_mode mode_;
         std::optional<ssl::certificate> certificate_{};
@@ -293,5 +201,3 @@ namespace g6::ssl {
     };
 
 }// namespace g6::ssl
-
-#include <g6/ssl/impl/async_socket_impl.hpp>

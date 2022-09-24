@@ -43,6 +43,7 @@ add_library(${PROJECT_NAME}
   src/ipv4_endpoint.cpp
   src/ipv6_address.cpp
   src/ipv6_endpoint.cpp
+  src/ssl_async_socket.cpp
 
   ${${PROJECT_NAME}_headers}
   )

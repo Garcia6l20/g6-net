@@ -1,6 +1,8 @@
 #pragma once
 
+#include <g6/coro/async_generator.hpp>
 #include <g6/coro/task.hpp>
+
 #include <g6/tag_invoke>
 
 #include <span>
@@ -41,8 +43,9 @@ namespace g6::net {
         // some protocols can send message with empty data thus, this template function will be used
         template<typename Sock, typename... Args>
         requires g6::tag_invocable_c<Concrete, Sock &, std::span<std::byte const>, Args &&...> auto
-        operator()(Sock &sock, Args &&...args) const noexcept(
-            g6::nothrow_tag_invocable_c<Concrete, Sock &, std::span<std::byte const>, Args &&...>) requires(sizeof...(Args) > 0) {
+        operator()(Sock &sock, Args &&...args) const
+            noexcept(g6::nothrow_tag_invocable_c<Concrete, Sock &, std::span<std::byte const>, Args &&...>) requires(
+                sizeof...(Args) > 0) {
             return this->tag_invoke(sock, std::span<std::byte const, 0>{}, std::forward<Args>(args)...);
         }
     };
@@ -77,6 +80,19 @@ namespace g6::net {
                 total_size += sz;
             } while (net::has_pending_data(sock));
             co_return total_size;
+        }
+
+        template<typename Sock, typename... Args>
+        requires g6::tag_invocable_c<Concrete, Sock &, std::span<std::byte>, Args &&...>
+            async_generator<std::span<std::byte const>> operator()(Sock &sock, Args &&...args) const
+            noexcept(g6::nothrow_tag_invocable_c<Concrete, Sock &, std::span<std::byte>, Args &&...>) {
+            std::array<std::byte, 256> buffer;
+            size_t total_size = 0;
+            do {
+                auto sz = co_await this->tag_invoke(
+                    sock, as_writable_bytes(std::span{buffer.data(), buffer.size()}, std::forward<Args>(args)...));
+                co_yield as_bytes(std::span{buffer.data(), sz});
+            } while (net::has_pending_data(sock));
         }
     };
 

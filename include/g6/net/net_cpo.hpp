@@ -48,6 +48,13 @@ namespace g6::net {
                 sizeof...(Args) > 0) {
             return this->tag_invoke(sock, std::span<std::byte const, 0>{}, std::forward<Args>(args)...);
         }
+
+        template <tl::spec_of<std::variant> VarSock, typename... Args>
+        auto operator()(VarSock &var_sock, Args &&...args) const {
+            return std::visit([&]<typename Sock>(Sock &sock) {
+                return this->tag_invoke(sock, std::forward<Args>(args)...);
+            }, var_sock);
+        }
     };
 
     constexpr struct _async_send : _async_send_base<_async_send> {
@@ -93,6 +100,13 @@ namespace g6::net {
                     sock, as_writable_bytes(std::span{buffer.data(), buffer.size()}, std::forward<Args>(args)...));
                 co_yield as_bytes(std::span{buffer.data(), sz});
             } while (net::has_pending_data(sock));
+        }
+        
+        template <tl::spec_of<std::variant> VarSock, typename... Args>
+        auto operator()(VarSock &var_sock, Args &&...args) const {
+            return std::visit([&]<typename Sock>(Sock &sock) {
+                return this->tag_invoke(sock, std::forward<Args>(args)...);
+            }, var_sock);
         }
     };
 

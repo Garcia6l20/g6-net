@@ -468,11 +468,15 @@ namespace g6::net {
     }
 
     inline auto tag_invoke(tag_t<async_send>, async_socket &socket, std::span<const std::byte> buffer) noexcept {
-        return detail::send_sender{socket.context_, socket, buffer};
+        return [](async_socket &socket, std::span<const std::byte> buffer) -> task<size_t> {
+            co_return co_await detail::send_sender{socket.context_, socket, buffer};
+        }(socket, buffer);
     }
 
     inline auto tag_invoke(tag_t<async_recv>, async_socket &socket, std::span<std::byte> buffer) noexcept {
-        return detail::recv_sender{socket.context_, socket, buffer};
+        return [](async_socket &socket, std::span<std::byte> buffer) -> task<size_t> {
+            co_return co_await detail::recv_sender{socket.context_, socket, buffer};
+        }(socket, buffer);
     }
 
     inline auto tag_invoke(tag_t<async_send_to>, async_socket &socket, std::span<const std::byte> buffer,
@@ -493,7 +497,7 @@ namespace g6::net {
         int count = 0;
         (void) ::ioctl(socket.fd_.get(), FIONREAD, &count);
 #endif
-        return count;
+        return size_t(count);
     }
     inline auto tag_invoke(tag_t<has_pending_data>, async_socket &socket) noexcept { return pending_bytes(socket) > 0; }
 

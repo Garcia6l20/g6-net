@@ -9,6 +9,7 @@
 
 #include <g6/ssl/error.hpp>
 #include <g6/ssl/key_type.hpp>
+#include <g6/ssl/context.hpp>
 #include <g6/utils/c_ptr.hpp>
 
 #include <filesystem>
@@ -30,7 +31,7 @@ namespace g6::ssl {
                 if (auto error = mbedtls_pk_parse_key(
                         ctx_.get(), reinterpret_cast<const unsigned char *>(data.data()), data.size_bytes(),
                         reinterpret_cast<const unsigned char *>(passphrase.empty() ? nullptr : passphrase.data()),
-                        passphrase.size());
+                        passphrase.size(), mbedtls_ctr_drbg_random, &detail::context::instance().entropy_ctx());
                     error) {
                     throw std::system_error{error, ssl::error_category, "mbedtls_pk_parse_key"};
                 }

@@ -3,7 +3,7 @@ catch2/2.13.8
 
 [requires]
 fmt/8.1.1
-mbedtls/2.25.0
+mbedtls/3.2.1
 ctre/3.6
 
 [generators]

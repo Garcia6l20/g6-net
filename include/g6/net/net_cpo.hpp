@@ -17,7 +17,17 @@ namespace g6::net {
     G6_MAKE_CPO(async_close)
 
     G6_MAKE_CPO(async_accept)
-    G6_MAKE_CPO(async_connect)
+
+    constexpr struct _async_connect : g6::cpo<_async_connect> {
+        using g6::cpo<_async_connect>::operator();
+
+        template <tl::spec_of<std::variant> VarSock, typename ...Args>
+        decltype(auto) operator()(VarSock &var_sock, Args &&...args) const {
+            return std::visit([&]<typename Sock>(Sock &sock) {
+                return this->tag_invoke(sock, std::forward<Args>(args)...);
+            }, var_sock);
+        }
+    } async_connect{};
 
     template<typename Concrete>
     struct _async_send_base : g6::cpo<Concrete> {

@@ -464,7 +464,9 @@ namespace g6::net {
     }
 
     inline auto tag_invoke(tag_t<async_connect>, async_socket &socket, ip_endpoint const &endpoint) noexcept {
-        return detail::connect_sender{socket.context_, socket, endpoint};
+        return [](async_socket &socket, ip_endpoint const &endpoint) -> task<void> {
+            co_await detail::connect_sender{socket.context_, socket, endpoint};
+        }(socket, endpoint);
     }
 
     inline auto tag_invoke(tag_t<async_send>, async_socket &socket, std::span<const std::byte> buffer) noexcept {

@@ -133,6 +133,10 @@ namespace g6::io {
 
         return std::make_tuple(socketHandle, skipCompletionPortOnSuccess);
     }
+#else
+    int create_socket(net::socket_protocol type) {
+        return ::socket(type.domain, type.type, type.proto);
+    }
 #endif
 
 }// namespace g6::io

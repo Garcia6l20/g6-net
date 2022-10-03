@@ -16,19 +16,24 @@ namespace g6::net {
         int proto;
     };
     namespace proto {
-        struct tcp_t {
+        constexpr struct tcp_t {
             constexpr operator socket_protocol() const noexcept {
                 return {AF_INET, SOCK_STREAM, IPPROTO_TCP};
             }
-        };
-        constexpr tcp_t tcp;
+        } tcp;
 
-        struct udp_t {
+        constexpr struct udp_t {
             constexpr operator socket_protocol() const noexcept {
                 return {AF_INET, SOCK_DGRAM, IPPROTO_UDP};
             }
-        };
-        constexpr udp_t udp;
+        } udp;
+
+        constexpr struct secure_tcp_t {
+            constexpr operator socket_protocol() const noexcept {
+                return {AF_INET, SOCK_STREAM, IPPROTO_TCP};
+            }
+        } secure_tcp;
+
     }// namespace proto
 
 }// namespace g6::net

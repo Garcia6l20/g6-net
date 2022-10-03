@@ -75,20 +75,14 @@ namespace g6::ssl {
         mbedtls_ssl_conf_dbg(ssl_config_.get(), &ssl::async_socket::_mbedtls_debug, this);
     }
 
-    async_socket::async_socket(io::context &io_context, socket_handle::handle_t fd, net::socket_protocol proto,
-                               connection_mode mode_, std::optional<ssl::certificate> cert,
-                               std::optional<ssl::private_key> key, bool skip_on_success)
-        : net::async_socket{io_context, fd, proto, skip_on_success}, mode_{mode_},
-          certificate_{std::move(cert)}, key_{std::move(key)}, verify_mode_{mode_ == connection_mode::server
-                                                                                ? peer_verify_mode::none
-                                                                                : peer_verify_mode::required} {
-        init();
+    async_socket::async_socket(io::context &io_context, socket_handle::handle_t fd, net::socket_protocol proto, bool skip_on_success)
+        : net::async_socket{io_context, fd, proto, skip_on_success} {
     }
 
-    async_socket::async_socket(net::async_socket &&raw_socket, connection_mode mode_,
+    async_socket::async_socket(net::async_socket &&raw_socket, connection_mode mode,
                                std::optional<ssl::certificate> cert, std::optional<ssl::private_key> key)
-        : net::async_socket{std::forward<net::async_socket>(raw_socket)}, mode_{mode_},
-          certificate_{std::move(cert)}, key_{std::move(key)}, verify_mode_{mode_ == connection_mode::server
+        : net::async_socket{std::forward<net::async_socket>(raw_socket)}, mode_{mode},
+          certificate_{std::move(cert)}, key_{std::move(key)}, verify_mode_{mode == connection_mode::server
                                                                                 ? peer_verify_mode::none
                                                                                 : peer_verify_mode::required} {
         init();
@@ -126,6 +120,16 @@ namespace g6::ssl {
         }
     }
 
+    void async_socket::listen(size_t count) {
+        net::async_socket::listen(count);
+        if (mode_ != connection_mode::server) {
+            // we are server
+            assert(mode_ == connection_mode::none);
+            mode_ = connection_mode::server;
+            init();
+        }
+    }
+
     task<std::tuple<async_socket, net::ip_endpoint>> tag_invoke(tag_t<net::async_accept>, ssl::async_socket &socket) {
         auto [in_sock, endpoint] = co_await net::async_accept(static_cast<net::async_socket &>(socket));
         ssl::async_socket ssl_sock{std::move(in_sock), ssl::async_socket::connection_mode::server, socket.certificate_,
@@ -138,6 +142,9 @@ namespace g6::ssl {
     }
 
     task<void> tag_invoke(tag_t<net::async_connect>, ssl::async_socket &socket, const net::ip_endpoint &endpoint) {
+        assert(socket.mode_ == async_socket::connection_mode::none);
+        socket.mode_ = async_socket::connection_mode::client;
+        socket.init();
         co_await net::async_connect(static_cast<net::async_socket &>(socket), endpoint);
         co_await ssl::async_encrypt(socket);
     }
@@ -218,56 +225,15 @@ namespace g6::ssl {
 }// namespace g6::ssl
 
 namespace g6::io {
-
-    /** @brief Creates an SSL tcp server
-     *
-     * @param scheduler
-     * @param certificate
-     * @param pk
-     * @return The created ssl::async_socket
-     */
-    ssl::async_socket tag_invoke(tag_t<net::open_socket>, g6::io::context &ctx, net::ip_endpoint const &endpoint,
-                                 ssl::certificate const &certificate, ssl::private_key const &pk) {
+    ssl::async_socket tag_invoke(tag_t<net::open_socket>, g6::io::context &ctx, net::proto::secure_tcp_t) {
 #if G6_OS_WINDOWS
         auto [result, iocp_skip] = io::create_socket(net::proto::tcp, ctx.iocp_handle());
         if (result < 0) { throw std::system_error{static_cast<int>(::WSAGetLastError()), std::system_category()}; }
-        ssl::async_socket sock{ctx,         result, net::proto::tcp, ssl::async_socket::connection_mode::server,
-                               certificate, pk,     iocp_skip};
 #else
-        int result = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        bool iocp_skip = false;
+        int result = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if (result < 0) { throw std::system_error{-errno, std::system_category()}; }
-        ssl::async_socket sock{ctx,         result, net::proto::tcp, ssl::async_socket::connection_mode::server,
-                               certificate, pk};
 #endif
-        sock.bind(endpoint);
-        sock.listen();
-        return sock;
-    }
-
-    ssl::async_socket tag_invoke(tag_t<net::open_socket>, g6::io::context &ctx, ssl::detail::tags::tcp_client) {
-#if G6_OS_WINDOWS
-        auto [result, iocp_skip] = io::create_socket(net::proto::tcp, ctx.iocp_handle());
-        if (result < 0) { throw std::system_error{static_cast<int>(::WSAGetLastError()), std::system_category()}; }
-        ssl::async_socket sock{ctx, result, net::proto::tcp, ssl::async_socket::connection_mode::client,
-                               {},  {},     iocp_skip};
-#else
-        int result = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-        if (result < 0) {
-            int errorCode = errno;
-            throw std::system_error{errorCode, std::system_category()};
-        }
-        ssl::async_socket sock{ctx, result, net::proto::tcp, ssl::async_socket::connection_mode::client, {}, {}};
-#endif
-        return sock;
-    }
-    
-    ssl::async_socket tag_invoke(tag_t<net::open_socket>, g6::io::context &ctx, ssl::detail::tags::tcp_server,
-                                 ssl::certificate const &certificate, ssl::private_key const &pk) {
-        int fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-        if (fd < 0) {
-            int errorCode = errno;
-            throw std::system_error{errorCode, std::system_category()};
-        }
-        return {ctx, fd, net::proto::tcp, ssl::async_socket::connection_mode::server, certificate, pk};
+        return {ctx, result, net::proto::secure_tcp, iocp_skip};
     }
 }// namespace g6::io

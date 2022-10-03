@@ -20,8 +20,11 @@ TEST_CASE("ssl tcp tx/rx test", "[g6::ssl::tcp]") {
     const ssl::certificate certificate{cert};
     const ssl::private_key private_key{key};
 
-    auto server = net::open_socket(ctx, *from_string<net::ip_endpoint>("127.0.0.1:0"), certificate, private_key);
+    auto server = net::open_socket(ctx, net::proto::secure_tcp);
+    server.bind(*from_string<net::ip_endpoint>("127.0.0.1:0"));
     server.host_name("localhost");
+    server.set_certificate(certificate);
+    server.set_private_key(private_key);
     server.set_peer_verify_mode(ssl::peer_verify_mode::optional);
     server.set_verify_flags(ssl::verify_flags::allow_untrusted);
 
@@ -46,7 +49,7 @@ TEST_CASE("ssl tcp tx/rx test", "[g6::ssl::tcp]") {
         }(),
         [&]() -> task<size_t> {
             scope_guard _ = [&]() noexcept { stop_source.request_stop(); };
-            auto client = net::open_socket(ctx, ssl::tcp_client);
+            auto client = net::open_socket(ctx, net::proto::secure_tcp);
             client.bind(*from_string<net::ip_endpoint>("127.0.0.1:0"));
             client.host_name("localhost");
             client.set_peer_verify_mode(ssl::peer_verify_mode::required);

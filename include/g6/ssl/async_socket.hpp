@@ -22,17 +22,10 @@ namespace g6::ssl { namespace detail::tags {
 }}// namespace g6::ssl::detail::tags
 
 namespace g6::io {
-    ssl::async_socket tag_invoke(tag_t<net::open_socket>, g6::io::context &, net::ip_endpoint const &,
-                                 ssl::certificate const &, ssl::private_key const &);
-    ssl::async_socket tag_invoke(tag_t<net::open_socket>, g6::io::context &, ssl::detail::tags::tcp_client);
-    ssl::async_socket tag_invoke(tag_t<net::open_socket>, g6::io::context &, ssl::detail::tags::tcp_server,
-                                 ssl::certificate const &, ssl::private_key const &);
+    ssl::async_socket tag_invoke(tag_t<net::open_socket>, g6::io::context &, net::proto::secure_tcp_t);
 }// namespace g6::io
 
 namespace g6::ssl {
-
-    inline const ssl::detail::tags::tcp_server tcp_server;
-    inline const ssl::detail::tags::tcp_client tcp_client;
 
     enum class peer_verify_mode {
         none = MBEDTLS_SSL_VERIFY_NONE,
@@ -84,13 +77,11 @@ namespace g6::ssl {
             }
         };
 
-        enum class connection_mode { client, server };
+        enum class connection_mode { none, client, server };
 
         void init();
 
-        async_socket(io::context &io_context, socket_handle::handle_t fd, net::socket_protocol proto,
-                     connection_mode mode_, std::optional<ssl::certificate> cert, std::optional<ssl::private_key> key,
-                     bool skip_on_success = false);
+        async_socket(io::context &io_context, socket_handle::handle_t fd, net::socket_protocol proto, bool);
 
         async_socket(net::async_socket &&raw_socket, connection_mode mode_, std::optional<ssl::certificate> cert,
                      std::optional<ssl::private_key> key);
@@ -101,15 +92,7 @@ namespace g6::ssl {
         friend struct detail::send_sender;
 
         friend ssl::async_socket g6::io::tag_invoke(tag_t<net::open_socket>, g6::io::context &ctx,
-                                                    net::ip_endpoint const &, ssl::certificate const &,
-                                                    ssl::private_key const &);
-
-        friend ssl::async_socket g6::io::tag_invoke(tag_t<net::open_socket>, g6::io::context &ctx,
-                                                    ssl::detail::tags::tcp_client);
-
-        friend ssl::async_socket g6::io::tag_invoke(tag_t<net::open_socket>, g6::io::context &ctx,
-                                                    ssl::detail::tags::tcp_server, ssl::certificate const &,
-                                                    ssl::private_key const &);
+                                                    net::proto::secure_tcp_t);
 
         friend task<void> tag_invoke(tag_t<net::async_connect>, ssl::async_socket &socket,
                                      const net::ip_endpoint &endpoint);
@@ -143,7 +126,7 @@ namespace g6::ssl {
         friend task<std::tuple<async_socket, net::ip_endpoint>> tag_invoke(tag_t<net::async_accept>,
                                                                            ssl::async_socket &socket);
 
-        connection_mode mode_;
+        connection_mode mode_ = connection_mode::none;
         std::optional<ssl::certificate> certificate_{};
         std::optional<ssl::private_key> key_{};
         detail::mbedtls_ssl_config_ptr ssl_config_ = detail::mbedtls_ssl_config_ptr::make();
@@ -181,12 +164,22 @@ namespace g6::ssl {
             mbedtls_ssl_conf_authmode(ssl_config_.get(), int(mode));
         }
 
+        void set_certificate(ssl::certificate cert) noexcept {
+            certificate_.emplace(std::move(cert));
+        }
+
+        void set_private_key(ssl::private_key key) noexcept {
+            key_.emplace(std::move(key));
+        }
+
         auto get_peer_verify_mode() const noexcept { return verify_mode_; }
 
         void set_verify_flags(ssl::verify_flags flags) noexcept { verify_flags_ = verify_flags_ | flags; }
         void unset_verify_flags(ssl::verify_flags flags) noexcept { verify_flags_ = verify_flags_ & flags; }
 
         auto get_verify_flags() const noexcept { return verify_flags_; }
+
+        void listen(size_t count = 100);
 
         /** @brief Set host name.
 		 *

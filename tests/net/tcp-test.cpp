@@ -17,7 +17,6 @@ using namespace std::chrono_literals;
 TEST_CASE("tcp stop server test", "[g6::net::tcp]") {
     io::context ctx{};
     std::stop_source stop_run{};
-
     REQUIRE_THROWS_AS(//
         sync_wait(
             [&]() -> task<void> {
@@ -49,8 +48,12 @@ TEST_CASE("tcp tx/rx test", "[g6::net::tcp]") {
             char buffer[1024]{};
             auto byte_count = co_await net::async_recv(client, as_writable_bytes(std::span{buffer}));
             co_await net::async_send(client, as_bytes(std::span{buffer, byte_count}));
+            try {
+                co_await schedule_after(ctx, 1h);
+                FAIL("should have been cancelled");
+            } catch (operation_cancelled const&) {}
             co_return byte_count;
-        }(),
+        }() | async_with(stop_source.get_token()),
         [&]() -> task<size_t> {
             scope_guard _ = [&]() noexcept { stop_source.request_stop(); };
             auto sock = net::open_socket(ctx, net::proto::tcp);
@@ -71,7 +74,6 @@ TEST_CASE("tcp tx/rx test", "[g6::net::tcp]") {
 
 TEST_CASE("tcp tx/rx stream test", "[g6::net::tcp]") {
     io::context ctx{};
-    std::stop_source stop_source{};
 
     auto server = net::open_socket(ctx, net::proto::tcp);
     server.bind(*from_string<net::ip_endpoint>("127.0.0.1:0"));
@@ -89,9 +91,6 @@ TEST_CASE("tcp tx/rx stream test", "[g6::net::tcp]") {
             co_return data.size();
         }(),
         [&]() -> task<size_t> {
-            scope_guard _{[&]() noexcept {//
-                stop_source.request_stop();
-            }};
             auto sock = net::open_socket(ctx, net::proto::tcp);
             sock.bind(*from_string<net::ip_endpoint>("127.0.0.1:0"));
             co_await net::async_connect(sock, server_endpoint);
@@ -102,7 +101,7 @@ TEST_CASE("tcp tx/rx stream test", "[g6::net::tcp]") {
             sent += co_await net::async_send(sock, data);
             co_return sent;
         }(),
-        async_exec(ctx, stop_source.get_token()));
+        async_exec(ctx));
 
     REQUIRE(sent == received);
 }

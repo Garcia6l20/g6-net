@@ -32,7 +32,7 @@ private:
     std::atomic<int> count_ = 0;
 };
 
-TEST_CASE("udp tx/rx test", "[g6::net::udp]") {
+TEST_CASE("g6::net: udp tx/rx test", "[g6][net][udp]") {
     io::context ctx{};
     std::stop_source stop_source{};
     using namespace std::chrono_literals;
@@ -59,7 +59,7 @@ TEST_CASE("udp tx/rx test", "[g6::net::udp]") {
     REQUIRE(rx_bytes == tx_bytes);
 }
 
-TEST_CASE("udp has_pending_data test", "[g6::net::udp]") {
+TEST_CASE("g6::net: udp has_pending_data test", "[g6][net][udp]") {
     io::context ctx{};
     std::stop_source stop_source{};
 
@@ -84,7 +84,7 @@ TEST_CASE("udp has_pending_data test", "[g6::net::udp]") {
         async_exec(ctx, stop_source.get_token()));
 }
 
-// TEST_CASE("udp reuse address", "[g6::net::udp]") {
+// TEST_CASE("g6::net: udp reuse address", "[g6][net][udp]") {
 //     io::context ctx{};
 //     counted_stop_source stop_source{};
 //     using namespace std::chrono_literals;
@@ -126,7 +126,7 @@ TEST_CASE("udp has_pending_data test", "[g6::net::udp]") {
 // }
 
 
-// TEST_CASE("udp multicast", "[g6::net::udp]") {
+// TEST_CASE("g6::net: udp multicast", "[g6][net][udp]") {
 //     io::context ctx{};
 //     counted_stop_source stop_source{};
 //     using namespace std::chrono_literals;

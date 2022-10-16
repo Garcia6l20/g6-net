@@ -11,7 +11,7 @@ using namespace g6;
 using namespace std::chrono_literals;
 
 
-TEST_CASE("file test", "[g6::io::files]") {
+TEST_CASE("g6::io::context: file test", "[g6][io][file]") {
     io::context ctx{};
     std::stop_source stop_source{};
 

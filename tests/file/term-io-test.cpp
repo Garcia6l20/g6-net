@@ -13,7 +13,7 @@ using namespace g6;
 using namespace std::chrono_literals;
 using namespace std::string_view_literals;
 
-TEST_CASE("temio test", "[g6::io::files]") {
+TEST_CASE("g6::io::context temio test", "[g6][io][termio]") {
     io::context ctx{};
     std::stop_source stop{};
     sync_wait(

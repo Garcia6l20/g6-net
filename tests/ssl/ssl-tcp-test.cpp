@@ -13,7 +13,7 @@
 using namespace g6;
 using namespace std::chrono_literals;
 
-TEST_CASE("ssl tcp tx/rx test", "[g6::ssl::tcp]") {
+TEST_CASE("g6::net::ssl tcp tx/rx test", "[g6][net][ssl][tcp]") {
     io::context ctx{};
     std::stop_source stop_source{};
 

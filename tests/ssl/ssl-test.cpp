@@ -5,7 +5,7 @@
 
 using namespace g6;
 
-TEST_CASE("g6::ssl::key encrypt/decrypt", "[g6::ssl]") {
+TEST_CASE("g6::ssl::key encrypt/decrypt", "[g6][net][ssl]") {
     ssl::private_key pk{key};
     std::string_view data_in{"hello world !"};
     std::array<char, 512> encrypted_data{};

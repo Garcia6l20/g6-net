@@ -13,8 +13,25 @@
 
 using namespace g6;
 using namespace std::chrono_literals;
+using namespace std::string_view_literals;
 
-TEST_CASE("tcp stop server test", "[g6::net::tcp]") {
+namespace g6::net {
+    template<typename Socket, typename ConnectionBuilder>
+    task<> tag_invoke(tag_t<async_serve>, Socket server, ip_endpoint endpoint,
+                      ConnectionBuilder con_builder) try {
+        server.bind(endpoint);
+        auto context = co_await this_coro::get_context;
+        while (true) {
+            auto [client, client_address] = co_await net::async_accept(server);
+            auto t = con_builder(std::move(client));
+            if (context) { t.set_context(context.value()); }
+            spawn(std::move(t));
+        }
+    } catch (operation_cancelled const &) {}
+}// namespace g6::net
+
+
+TEST_CASE("g6::net: tcp stop server test", "[g6][net][tcp]") {
     io::context ctx{};
     std::stop_source stop_run{};
     REQUIRE_THROWS_AS(//
@@ -24,16 +41,15 @@ TEST_CASE("tcp stop server test", "[g6::net::tcp]") {
                 auto sock = net::open_socket(ctx, net::proto::tcp);
                 sock.bind(*from_string<net::ip_endpoint>("127.0.0.1:0"));
                 sock.listen();
-                auto [client, client_address] = co_await net::async_accept(sock);
+                auto [client, client_address] = co_await (net::async_accept(sock) | async_with(io_timeout{100ms}));
                 FAIL("Should have been cancelled");
-            }() | cancel_after(ctx, 100ms),
+            }(),
             async_exec(ctx, stop_run.get_token())),
         operation_cancelled);
 }
 
-TEST_CASE("tcp tx/rx test", "[g6::net::tcp]") {
+TEST_CASE("g6::net: tcp tx/rx test", "[g6][net][tcp]") {
     io::context ctx{};
-    std::stop_source stop_source{};
 
     auto server = net::open_socket(ctx, net::proto::tcp);
     server.bind(*from_string<net::ip_endpoint>("127.0.0.1:0"));
@@ -49,13 +65,12 @@ TEST_CASE("tcp tx/rx test", "[g6::net::tcp]") {
             auto byte_count = co_await net::async_recv(client, as_writable_bytes(std::span{buffer}));
             co_await net::async_send(client, as_bytes(std::span{buffer, byte_count}));
             try {
-                co_await schedule_after(ctx, 1h);
-                FAIL("should have been cancelled");
+                auto rx_bytes = co_await net::async_recv(client, as_writable_bytes(std::span{buffer}));
+                FAIL("should have been timed out");
             } catch (operation_cancelled const&) {}
             co_return byte_count;
-        }() | async_with(stop_source.get_token()),
+        }() | async_with(io_timeout{20ms}),
         [&]() -> task<size_t> {
-            scope_guard _ = [&]() noexcept { stop_source.request_stop(); };
             auto sock = net::open_socket(ctx, net::proto::tcp);
             sock.bind(*from_string<net::ip_endpoint>("127.0.0.1:0"));
             co_await net::async_connect(sock, server_endpoint);
@@ -63,16 +78,17 @@ TEST_CASE("tcp tx/rx test", "[g6::net::tcp]") {
             const char buffer[] = {"hello world !!!"};
             auto sent = co_await net::async_send(sock, as_bytes(std::span{buffer}));
             char rx_buffer[1024]{};
-            auto rx_bytes = co_await net::async_recv(sock, as_writable_bytes(std::span{rx_buffer}));
+            auto rx_bytes = co_await net::async_recv(sock, as_writable_bytes(std::span{rx_buffer}));            
             REQUIRE(std::memcmp(rx_buffer, buffer, rx_bytes) == 0);
+            co_await schedule_after(ctx, 40ms);
             co_return sent;
         }(),
-        async_exec(ctx, stop_source.get_token()));
+        async_exec(ctx));
 
     REQUIRE(sent == received);
 }
 
-TEST_CASE("tcp tx/rx stream test", "[g6::net::tcp]") {
+TEST_CASE("g6::net: tcp tx/rx stream test", "[g6][net][tcp]") {
     io::context ctx{};
 
     auto server = net::open_socket(ctx, net::proto::tcp);

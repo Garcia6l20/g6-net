@@ -62,7 +62,7 @@ namespace g6::net {
             sockaddr_storage storage{};
             auto size = endpoint.to_sockaddr(storage);
             if (auto error = ::bind(fd_.get(), reinterpret_cast<const sockaddr *>(&storage), size); error < 0) {
-                throw std::system_error(-errno, std::system_category());
+                throw std::system_error(errno, std::system_category());
             }
         }
 
@@ -98,7 +98,7 @@ namespace g6::net {
 #else
             if (::listen(fd_.get(), count) < 0) {
 #endif
-                throw std::system_error(-errno, std::system_category());
+                throw std::system_error(errno, std::system_category());
             }
         }
 

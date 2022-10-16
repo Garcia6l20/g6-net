@@ -208,8 +208,8 @@ namespace g6::net {
                         if (digitCount > 1 && hasLeadingZero) { return std::nullopt; }
                     }
 
-                    parts[partCount] = (decimalParts[0] << 8) + decimalParts[1];
-                    parts[partCount + 1] = (decimalParts[2] << 8) + decimalParts[3];
+                    parts[partCount] = uint16_t(decimalParts[0] << 8) + decimalParts[1];
+                    parts[partCount + 1] = uint16_t(decimalParts[2] << 8) + decimalParts[3];
                     partCount += 2;
 
                     // Dotted decimal notation only appears at end.
@@ -223,7 +223,7 @@ namespace g6::net {
 
             // Current part was made up of hex-digits.
             std::uint16_t partValue = digits[0];
-            for (int i = 1; i < digitCount; ++i) { partValue = partValue * 16 + digits[i]; }
+            for (int i = 1; i < digitCount; ++i) { partValue = uint16_t(partValue * 16) + uint16_t(digits[i]); }
 
             parts[partCount] = partValue;
             ++partCount;

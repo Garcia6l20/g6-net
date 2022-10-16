@@ -67,26 +67,26 @@ namespace g6::net {
         }
 
         std::optional<net::ip_endpoint> local_endpoint() const {
-            sockaddr sockaddr_in_{};
+            sockaddr_storage sockaddr_in_{};
 #if G6_OS_WINDOWS
             int
 #else
             socklen_t
 #endif
                 sockaddr_in_len = sizeof(sockaddr_in_);
-            if (getsockname(fd_.get(), &sockaddr_in_, &sockaddr_in_len) < 0) { return std::nullopt; }
+            if (getsockname(fd_.get(), reinterpret_cast<sockaddr*>(&sockaddr_in_), &sockaddr_in_len) < 0) { return std::nullopt; }
             return net::ip_endpoint::from_sockaddr(sockaddr_in_);
         }
 
         std::optional<net::ip_endpoint> remote_endpoint() const {
-            sockaddr sockaddr_in_{};
+            sockaddr_storage sockaddr_in_{};
 #if G6_OS_WINDOWS
             int
 #else
             socklen_t
 #endif
                 sockaddr_in_len = sizeof(sockaddr_in_);
-            if (getpeername(fd_.get(), &sockaddr_in_, &sockaddr_in_len) < 0) { return std::nullopt; }
+            if (getpeername(fd_.get(), reinterpret_cast<sockaddr*>(&sockaddr_in_), &sockaddr_in_len) < 0) { return std::nullopt; }
             return net::ip_endpoint::from_sockaddr(sockaddr_in_);
         }
 

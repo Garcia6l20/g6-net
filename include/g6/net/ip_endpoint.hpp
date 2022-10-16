@@ -59,8 +59,8 @@ namespace g6::net {
         bool operator==(const ip_endpoint &rhs) const noexcept = default;
         constexpr auto operator<=>(const ip_endpoint &rhs) const noexcept = default;
 
-        static ip_endpoint from_sockaddr(const sockaddr &address) noexcept {
-            if (address.sa_family == AF_INET) {
+        static ip_endpoint from_sockaddr(const sockaddr_storage &address) noexcept {
+            if (address.ss_family == AF_INET) {
                 sockaddr_in ipv4Address{};
                 std::memcpy(&ipv4Address, &address, sizeof(ipv4Address));
 
@@ -69,7 +69,7 @@ namespace g6::net {
 
                 return ipv4_endpoint{ipv4_address{addressBytes}, ntohs(ipv4Address.sin_port)};
             } else {
-                assert(address.sa_family == AF_INET6);
+                assert(address.ss_family == AF_INET6);
 
                 sockaddr_in6 ipv6Address{};
                 std::memcpy(&ipv6Address, &address, sizeof(ipv6Address));

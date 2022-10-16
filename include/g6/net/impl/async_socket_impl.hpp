@@ -112,7 +112,7 @@ namespace g6::net {
             auto finalize_operation() noexcept {
                 return std::make_tuple(
                     size_t(this->byte_count_),
-                    ip_endpoint::from_sockaddr(reinterpret_cast<const sockaddr &>(sockaddr_storage_)));
+                    ip_endpoint::from_sockaddr(sockaddr_storage_));
             }
 
             explicit recv_from_sender(io::context &context, async_socket &socket, std::span<std::byte> buffer) noexcept
@@ -159,7 +159,7 @@ namespace g6::net {
             auto finalize_operation() noexcept {
                 return std::make_tuple(
                     async_socket{context_, int(this->byte_count_), socket_.protocol()},
-                    ip_endpoint::from_sockaddr(reinterpret_cast<const sockaddr &>(sockaddr_storage_)));
+                    ip_endpoint::from_sockaddr(sockaddr_storage_));
             }
 
             explicit accept_sender(io::context &context, async_socket &socket) noexcept
@@ -182,7 +182,7 @@ namespace g6::net {
             auto finalize_operation() noexcept {
                 return std::make_tuple(
                     size_t(this->byte_count_),
-                    ip_endpoint::from_sockaddr(reinterpret_cast<const sockaddr &>(sockaddr_storage_)));
+                    ip_endpoint::from_sockaddr(sockaddr_storage_));
             }
 
             explicit connect_sender(io::context &context, async_socket &socket, ip_endpoint const &to) noexcept

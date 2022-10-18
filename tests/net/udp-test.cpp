@@ -69,7 +69,6 @@ TEST_CASE("g6::net: udp has_pending_data test", "[g6][net][udp]") {
         [&]() -> task<void> {
             scope_guard _ = [&]() noexcept { stop_source.request_stop(); };
             auto sock = net::open_socket(ctx, net::proto::udp);
-            std::array<std::byte, 64> buffer{};
             sock.bind(*from_string<net::ip_endpoint>("127.0.0.1:4242"));
             REQUIRE_FALSE(net::has_pending_data(sock));
             co_await schedule_after(ctx, 10ms);
@@ -78,8 +77,7 @@ TEST_CASE("g6::net: udp has_pending_data test", "[g6][net][udp]") {
         [&]() -> task<void> {
             auto sock = net::open_socket(ctx, net::proto::udp);
             const char buffer[] = {"hello world !!!"};
-            auto bytes_sent =
-                co_await net::async_send_to(sock, std::span{buffer}, *from_string<net::ip_endpoint>("127.0.0.1:4242"));
+            co_await net::async_send_to(sock, std::span{buffer}, *from_string<net::ip_endpoint>("127.0.0.1:4242"));
         }(),
         async_exec(ctx, stop_source.get_token()));
 }

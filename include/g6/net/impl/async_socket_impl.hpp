@@ -70,7 +70,7 @@ namespace g6::net {
                 return context_.io_queue().transaction(*this).sendmsg(socket_.get_fd(), msghdr_).commit();
             }
 
-            auto finalize_operation() noexcept { return size_t(this->byte_count_); }
+            auto finalize_operation() noexcept { return this->byte_count_; }
 
             explicit send_to_sender(io::context &context, async_socket &socket, const net::ip_endpoint &endpoint,
                                     std::span<const std::byte> buffer) noexcept
@@ -82,7 +82,7 @@ namespace g6::net {
         private:
             sockaddr_storage sockaddr_storage_;
             iovec iovec_;
-            msghdr msghdr_{&sockaddr_storage_, sizeof(sockaddr_storage_), &iovec_, 1};
+            msghdr msghdr_{&sockaddr_storage_, sizeof(sockaddr_storage_), &iovec_, 1, nullptr, 0, 0};
         };
 
         class send_sender : public net_operation_base<send_sender> {
@@ -94,7 +94,7 @@ namespace g6::net {
                     .commit();
             }
 
-            auto finalize_operation() noexcept { return size_t(this->byte_count_); }
+            auto finalize_operation() noexcept { return this->byte_count_; }
 
             explicit send_sender(io::context &context, async_socket &socket, std::span<const std::byte> buffer) noexcept
                 : net_operation_base<send_sender>{context, socket}, buffer_{buffer} {}
@@ -111,7 +111,7 @@ namespace g6::net {
 
             auto finalize_operation() noexcept {
                 return std::make_tuple(
-                    size_t(this->byte_count_),
+                    this->byte_count_,
                     ip_endpoint::from_sockaddr(sockaddr_storage_));
             }
 
@@ -126,7 +126,7 @@ namespace g6::net {
         private:
             sockaddr_storage sockaddr_storage_;
             iovec iovec_;
-            msghdr msghdr_{&sockaddr_storage_, sizeof(sockaddr_storage_), &iovec_, 1};
+            msghdr msghdr_{&sockaddr_storage_, sizeof(sockaddr_storage_), &iovec_, 1, nullptr, 0, 0};
         };
 
         class recv_sender : public net_operation_base<recv_sender> {
@@ -138,7 +138,7 @@ namespace g6::net {
                     .commit();
             }
 
-            auto finalize_operation() noexcept { return size_t(this->byte_count_); }
+            auto finalize_operation() noexcept { return this->byte_count_; }
 
             explicit recv_sender(io::context &context, async_socket &socket, std::span<std::byte> buffer) noexcept
                 : net_operation_base<recv_sender>{context, socket}, buffer_{buffer} {}
@@ -181,13 +181,15 @@ namespace g6::net {
 
             auto finalize_operation() noexcept {
                 return std::make_tuple(
-                    size_t(this->byte_count_),
+                    this->byte_count_,
                     ip_endpoint::from_sockaddr(sockaddr_storage_));
             }
 
             explicit connect_sender(io::context &context, async_socket &socket, ip_endpoint const &to) noexcept
                 : net_operation_base<connect_sender>{context, socket} {
-                sockaddr_storage_len_ = to.to_sockaddr(sockaddr_storage_);
+                auto sz = to.to_sockaddr(sockaddr_storage_);
+                assert(sz >= 0);
+                sockaddr_storage_len_ = size_t(sz);
             }
 
         private:

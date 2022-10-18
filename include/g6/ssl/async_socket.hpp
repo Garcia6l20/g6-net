@@ -142,10 +142,10 @@ namespace g6::ssl {
         /// @cond
         // move ctor (must update callbacks)
         async_socket(async_socket &&other) noexcept
-            : mode_{other.mode_}, certificate_{std::move(other.certificate_)}, key_{std::move(other.key_)},
-              ssl_context_{std::move(other.ssl_context_)}, ssl_config_{std::move(other.ssl_config_)},
+            : net::async_socket{std::move(other)}, mode_{other.mode_}, certificate_{std::move(other.certificate_)}, key_{std::move(other.key_)},
+              ssl_config_{std::move(other.ssl_config_)}, ssl_context_{std::move(other.ssl_context_)},
               encrypted_{other.encrypted_}, verify_mode_{other.verify_mode_}, verify_flags_{other.verify_flags_},
-              to_receive_{other.to_receive_}, to_send_{other.to_send_}, net::async_socket{std::move(other)} {
+              to_receive_{other.to_receive_}, to_send_{other.to_send_}, hostname_{std::move(other.hostname_)} {
             // update callbacks
             _mbedtls_setup_callbacks();
         }

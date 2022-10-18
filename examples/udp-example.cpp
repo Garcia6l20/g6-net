@@ -30,8 +30,8 @@ int main() {
                 auto sock = net::open_socket(ctx, net::proto::udp);
                 sock.bind(*from_string<net::ip_endpoint>("127.0.0.1:2424"));
                 const char buffer[] = {"hello world !!!"};
-                auto bytes_sent = co_await g6::net::async_send_to(sock, as_bytes(std::span{buffer}),
-                                                                  *g6::from_string<net::ip_endpoint>("127.0.0.1:4242"));
+                co_await g6::net::async_send_to(sock, as_bytes(std::span{buffer}),
+                                                *g6::from_string<net::ip_endpoint>("127.0.0.1:4242"));
             } catch (std::exception const &ex) { std::cerr << "emitter failed: " << ex.what() << '\n'; }
         }(),
         async_exec(ctx, stop_source.get_token()));

@@ -42,7 +42,7 @@ namespace g6::io {
         g6::file file_;
 
     public:
-        term_io(context &ctx, auto file_no) noexcept : file_{ctx, file_no}, ctx_{ctx} { file_.dont_close(); }
+        term_io(context &ctx, auto file_no) noexcept : ctx_{ctx}, file_{ctx, file_no} { file_.dont_close(); }
 
         template<size_t extent>
         friend auto tag_invoke(tag_t<async_read_some>, term_io &, std::span<std::byte, extent>);

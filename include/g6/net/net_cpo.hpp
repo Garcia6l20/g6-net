@@ -18,14 +18,16 @@ namespace g6::net {
 
     G6_MAKE_CPO(async_accept)
 
+    G6_MAKE_CPO(async_serve)
+
     constexpr struct _async_connect : g6::cpo<_async_connect> {
         using g6::cpo<_async_connect>::operator();
 
-        template <tl::spec_of<std::variant> VarSock, typename ...Args>
+        template<tl::spec_of<std::variant> VarSock, typename... Args>
         decltype(auto) operator()(VarSock &var_sock, Args &&...args) const {
-            return std::visit([&]<typename Sock>(Sock &sock) {
-                return this->tag_invoke(sock, std::forward<Args>(args)...);
-            }, var_sock);
+            return std::visit(
+                [&]<typename Sock>(Sock &sock) { return this->tag_invoke(sock, std::forward<Args>(args)...); },
+                var_sock);
         }
     } async_connect{};
 
@@ -52,18 +54,18 @@ namespace g6::net {
 
         // some protocols can send message with empty data thus, this template function will be used
         template<typename Sock, typename... Args>
-        requires g6::tag_invocable_c<Concrete, Sock &, std::span<std::byte const>, Args &&...> auto
+        requires(g6::tag_invocable_c<Concrete, Sock &, std::span<std::byte const>, Args &&...>) auto
         operator()(Sock &sock, Args &&...args) const
             noexcept(g6::nothrow_tag_invocable_c<Concrete, Sock &, std::span<std::byte const>, Args &&...>) requires(
                 sizeof...(Args) > 0) {
             return this->tag_invoke(sock, std::span<std::byte const, 0>{}, std::forward<Args>(args)...);
         }
 
-        template <tl::spec_of<std::variant> VarSock, typename... Args>
+        template<tl::spec_of<std::variant> VarSock, typename... Args>
         auto operator()(VarSock &var_sock, Args &&...args) const {
-            return std::visit([&]<typename Sock>(Sock &sock) {
-                return this->tag_invoke(sock, std::forward<Args>(args)...);
-            }, var_sock);
+            return std::visit(
+                [&]<typename Sock>(Sock &sock) { return this->tag_invoke(sock, std::forward<Args>(args)...); },
+                var_sock);
         }
     };
 
@@ -104,19 +106,18 @@ namespace g6::net {
             async_generator<std::span<std::byte const>> operator()(Sock &sock, Args &&...args) const
             noexcept(g6::nothrow_tag_invocable_c<Concrete, Sock &, std::span<std::byte>, Args &&...>) {
             std::array<std::byte, 256> buffer;
-            size_t total_size = 0;
             do {
                 auto sz = co_await this->tag_invoke(
                     sock, as_writable_bytes(std::span{buffer.data(), buffer.size()}, std::forward<Args>(args)...));
                 co_yield as_bytes(std::span{buffer.data(), sz});
             } while (net::has_pending_data(sock));
         }
-        
-        template <tl::spec_of<std::variant> VarSock, typename... Args>
+
+        template<tl::spec_of<std::variant> VarSock, typename... Args>
         auto operator()(VarSock &var_sock, Args &&...args) const {
-            return std::visit([&]<typename Sock>(Sock &sock) {
-                return this->tag_invoke(sock, std::forward<Args>(args)...);
-            }, var_sock);
+            return std::visit(
+                [&]<typename Sock>(Sock &sock) { return this->tag_invoke(sock, std::forward<Args>(args)...); },
+                var_sock);
         }
     };
 

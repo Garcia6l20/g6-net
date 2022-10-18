@@ -6,7 +6,7 @@
 
 namespace g6::ssl {
 
-    void async_socket::_mbedtls_debug(void *ctx, int level, const char *file, int line, const char *str) noexcept {
+    void async_socket::_mbedtls_debug(void *, int level, const char *file, int line, const char *str) noexcept {
 #ifdef G6_SSL_DEBUG
         static constexpr std::string_view fmt = "[mbedtls-{}] - {}:{}: {}";
         switch (level) {
@@ -23,10 +23,15 @@ namespace g6::ssl {
                 fmt::print(fmt, "debug", file, line, str);
                 break;
         }
+#else
+        (void) level;
+        (void) file;
+        (void) line;
+        (void) str;
 #endif
     }
 
-    int async_socket::_mbedtls_verify_cert(void *ctx, mbedtls_x509_crt *crt, int depth, uint32_t *flags) noexcept {
+    int async_socket::_mbedtls_verify_cert(void *ctx, mbedtls_x509_crt */*crt*/, int /*depth*/, uint32_t *flags) noexcept {
         auto &self = *reinterpret_cast<ssl::async_socket *>(ctx);
         if ((*flags & MBEDTLS_X509_BADCERT_SKIP_VERIFY) && self.verify_mode_ == peer_verify_mode::none) {
             *flags &= MBEDTLS_X509_BADCERT_SKIP_VERIFY;
@@ -49,12 +54,13 @@ namespace g6::ssl {
         }
     }
 
-    int async_socket::_mbedtls_recv(void *ctx, uint8_t *buf, size_t len) noexcept {
+    int async_socket::_mbedtls_recv(void */* ctx */, uint8_t * /*buf*/, size_t /*len*/) noexcept {
         abort();
         return MBEDTLS_ERR_SSL_WANT_READ;
     }
 
     int async_socket::_mbedtls_recv_timeout(void *ctx, uint8_t *buf, size_t len, uint32_t timeout) noexcept {
+        (void) timeout;
         auto &self = *static_cast<ssl::async_socket *>(ctx);
         if (self.to_receive_ == std::tuple{len, buf}) {
             len = self.to_receive_.actual_len;
@@ -216,7 +222,7 @@ namespace g6::ssl {
             } else if (result < 0) {
                 throw std::system_error(result, ssl::error_category, "mbedtls_ssl_write");
             } else {
-                offset += result;
+                offset += size_t(result);
             }
         }
         co_return offset;

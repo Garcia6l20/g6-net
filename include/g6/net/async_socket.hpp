@@ -61,7 +61,8 @@ namespace g6::net {
         void bind(g6::net::ip_endpoint const &endpoint) {
             sockaddr_storage storage{};
             auto size = endpoint.to_sockaddr(storage);
-            if (auto error = ::bind(fd_.get(), reinterpret_cast<const sockaddr *>(&storage), size); error < 0) {
+            assert(size >= 0);
+            if (auto error = ::bind(fd_.get(), reinterpret_cast<const sockaddr *>(&storage), socklen_t(size)); error < 0) {
                 throw std::system_error(errno, std::system_category());
             }
         }
@@ -96,7 +97,7 @@ namespace g6::net {
 #if G6_OS_WINDOWS
             if (::listen(fd_.get(), int(count)) < 0) {
 #else
-            if (::listen(fd_.get(), count) < 0) {
+            if (::listen(fd_.get(), int(count)) < 0) {
 #endif
                 throw std::system_error(errno, std::system_category());
             }
@@ -168,8 +169,8 @@ namespace g6::net {
         friend auto tag_invoke(tag_t<has_pending_data>, async_socket &socket) noexcept;
 
     protected:
-        socket_handle fd_;
         io::context &context_;
+        socket_handle fd_;
         socket_protocol type_;
         bool skip_completion_;
     };

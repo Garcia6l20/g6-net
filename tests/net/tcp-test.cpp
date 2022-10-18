@@ -65,7 +65,7 @@ TEST_CASE("g6::net: tcp tx/rx test", "[g6][net][tcp]") {
             auto byte_count = co_await net::async_recv(client, as_writable_bytes(std::span{buffer}));
             co_await net::async_send(client, as_bytes(std::span{buffer, byte_count}));
             try {
-                auto rx_bytes = co_await net::async_recv(client, as_writable_bytes(std::span{buffer}));
+                co_await net::async_recv(client, as_writable_bytes(std::span{buffer}));
                 FAIL("should have been timed out");
             } catch (operation_cancelled const&) {}
             co_return byte_count;

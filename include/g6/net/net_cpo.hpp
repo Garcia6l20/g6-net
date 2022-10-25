@@ -2,6 +2,7 @@
 
 #include <g6/coro/async_generator.hpp>
 #include <g6/coro/task.hpp>
+#include <g6/coro/cpo/file.hpp>
 
 #include <g6/tag_invoke>
 
@@ -10,11 +11,6 @@
 namespace g6::net {
 
     G6_MAKE_CPO(open_socket)
-
-    G6_MAKE_CPO(pending_bytes)
-    G6_MAKE_CPO(has_pending_data)
-
-    G6_MAKE_CPO(async_close)
 
     G6_MAKE_CPO(async_accept)
 
@@ -97,7 +93,7 @@ namespace g6::net {
                     sock, as_writable_bytes(std::span{buffer.data(), buffer.size()}, std::forward<Args>(args)...));
                 std::copy(std::begin(buffer), std::begin(buffer) + sz, cont);
                 total_size += sz;
-            } while (net::has_pending_data(sock));
+            } while (has_pending_data(sock));
             co_return total_size;
         }
 
@@ -110,7 +106,7 @@ namespace g6::net {
                 auto sz = co_await this->tag_invoke(
                     sock, as_writable_bytes(std::span{buffer.data(), buffer.size()}, std::forward<Args>(args)...));
                 co_yield as_bytes(std::span{buffer.data(), sz});
-            } while (net::has_pending_data(sock));
+            } while (has_pending_data(sock));
         }
 
         template<tl::spec_of<std::variant> VarSock, typename... Args>

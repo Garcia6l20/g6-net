@@ -70,9 +70,9 @@ TEST_CASE("g6::net: udp has_pending_data test", "[g6][net][udp]") {
             scope_guard _ = [&]() noexcept { stop_source.request_stop(); };
             auto sock = net::open_socket(ctx, net::proto::udp);
             sock.bind(*from_string<net::ip_endpoint>("127.0.0.1:4242"));
-            REQUIRE_FALSE(net::has_pending_data(sock));
+            REQUIRE_FALSE(has_pending_data(sock));
             co_await schedule_after(ctx, 10ms);
-            REQUIRE(net::pending_bytes(sock) == 16);
+            REQUIRE(pending_bytes(sock) == 16);
         }(),
         [&]() -> task<void> {
             auto sock = net::open_socket(ctx, net::proto::udp);

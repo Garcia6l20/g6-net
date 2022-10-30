@@ -50,17 +50,7 @@ namespace g6::ssl {
             }
         }
 
-        void load(std::string_view path) {
-            if (std::filesystem::is_directory(path)) {
-                if (auto error = mbedtls_x509_crt_parse_path(crt_.get(), path.data()); error != 0) {
-                    throw std::system_error{error, ssl::error_category, "mbedtls_x509_crt_parse_path"};
-                }
-            } else {
-                if (auto error = mbedtls_x509_crt_parse_file(crt_.get(), path.data()); error != 0) {
-                    throw std::system_error{error, ssl::error_category, "mbedtls_x509_crt_parse_file"};
-                }
-            }
-        }
+        void load(std::string_view path);
 
         [[nodiscard]] mbedtls_x509_crt const &chain() const { return *crt_; }
 

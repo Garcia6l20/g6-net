@@ -6,6 +6,7 @@
 
 #include <g6/tag_invoke>
 
+#include <variant>
 #include <span>
 
 namespace g6::net {
